@@ -1,0 +1,12 @@
+.venv/
+.vscode/
+__pycache__/
+*.pyc
+
+engine/target/
+engine/crates/web_binding/pkg/
+engine/crates/web_binding/pkg-bundler/
+engine/crates/web_binding/pkg-node/
+
+node_modules/
+dist/

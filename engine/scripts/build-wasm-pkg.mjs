@@ -1,0 +1,107 @@
+import { existsSync, readFileSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = fileURLToPath(new URL(".", import.meta.url));
+const root = resolve(scriptDir, "..");
+const pkgDir = resolve(root, "crates/web_binding/pkg-bundler");
+const pkgJsonPath = resolve(pkgDir, "package.json");
+
+// ── locate wasm-pack ───────────────────────────────────────────────────────
+const wasmPackCandidates = [
+  "wasm-pack",
+  resolve(homedir(), ".cargo", "bin", "wasm-pack.exe"),
+  resolve(homedir(), ".cargo", "bin", "wasm-pack"),
+];
+
+const wasmPack = wasmPackCandidates.find((c) => {
+  if (c === "wasm-pack") {
+    return spawnSync(c, ["--version"], { stdio: "ignore", shell: true }).status === 0;
+  }
+  return existsSync(c);
+});
+
+if (!wasmPack) {
+  console.error("Cannot find wasm-pack. Install it: cargo install wasm-pack");
+  process.exit(1);
+}
+
+const cargoBin = resolve(homedir(), ".cargo", "bin");
+const pathSep = process.platform === "win32" ? ";" : ":";
+const childPath = `${cargoBin}${pathSep}${process.env.PATH ?? ""}`;
+
+// ── wasm-pack build ────────────────────────────────────────────────────────
+if (existsSync(pkgDir)) {
+  console.log("==> Removing stale pkg-bundler/");
+  rmSync(pkgDir, { recursive: true, force: true });
+}
+
+console.log("==> wasm-pack build --target bundler");
+const result = spawnSync(
+  wasmPack,
+  ["build", "crates/web_binding", "--target", "bundler", "--release", "--out-dir", "pkg-bundler"],
+  {
+    stdio: "inherit",
+    shell: true,
+    cwd: root,
+    env: { ...process.env, PATH: childPath },
+  },
+);
+
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+// ── patch package.json ─────────────────────────────────────────────────────
+console.log("==> Patching pkg-bundler/package.json");
+const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+
+pkgJson.name        = "ipa-poetry-engine";
+pkgJson.version     = "0.1.0";
+pkgJson.description = "IPA poetry analysis engine - WebAssembly / npm binding";
+pkgJson.license     = "AGPL-3.0-or-later";
+pkgJson.author      = "Tilitronic";
+pkgJson.repository  = {
+  type: "git",
+  url: "https://github.com/Tilitronic/ipa-poetry-engine.git",
+  directory: "engine/crates/web_binding",
+};
+pkgJson.main        = "ipa_poetry_engine.js";
+pkgJson.module      = "ipa_poetry_engine.js";
+pkgJson.types       = "types.d.ts";
+pkgJson.exports = {
+  ".": {
+    types:   "./types.d.ts",
+    import:  "./ipa_poetry_engine.js",
+    default: "./ipa_poetry_engine.js",
+  },
+  "./ipa_poetry_engine_bg.wasm": "./ipa_poetry_engine_bg.wasm",
+};
+pkgJson.files = [
+  "ipa_poetry_engine_bg.wasm",
+  "ipa_poetry_engine_bg.js",
+  "ipa_poetry_engine.js",
+  "ipa_poetry_engine.d.ts",
+  "ipa_poetry_engine_bg.wasm.d.ts",
+  "types.d.ts",
+  "LICENSE",
+];
+pkgJson.sideEffects = ["./ipa_poetry_engine.js", "./snippets/*"];
+pkgJson.keywords = ["poetry", "phonetics", "ipa", "wasm", "webassembly", "nlp", "vite", "bundler"];
+pkgJson.engines = { node: ">=18.0.0" };
+
+writeFileSync(pkgJsonPath, `${JSON.stringify(pkgJson, null, 2)}\n`, "utf8");
+
+// ── copy extras ────────────────────────────────────────────────────────────
+console.log("==> Copying types.d.ts");
+copyFileSync(
+  resolve(root, "crates/web_binding/types/index.d.ts"),
+  resolve(pkgDir, "types.d.ts"),
+);
+
+console.log("==> Copying LICENSE");
+copyFileSync(resolve(root, "../LICENSE"), resolve(pkgDir, "LICENSE"));
+
+// ── summary ───────────────────────────────────────────────────────────────
+console.log("\nDone. pkg-bundler/ ready at:");
+console.log(`  ${pkgDir}`);

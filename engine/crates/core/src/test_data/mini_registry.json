@@ -1,0 +1,117 @@
+{
+  "metadata": {},
+  "phonemes": [
+    {
+      "ipa": "p",
+      "is_base": true,
+      "features": {
+        "syl":     { "value": "-" }, "son":     { "value": "-" }, "cons":    { "value": "+" },
+        "cont":    { "value": "-" }, "delrel":  { "value": "-" }, "lat":     { "value": "-" },
+        "nas":     { "value": "-" }, "strid":   { "value": "-" }, "voi":     { "value": "-" },
+        "sg":      { "value": "-" }, "cg":      { "value": "-" }, "ant":     { "value": "+" },
+        "cor":     { "value": "-" }, "distr":   { "value": "-" }, "lab":     { "value": "+" },
+        "hi":      { "value": "-" }, "lo":      { "value": "-" }, "back":    { "value": "-" },
+        "round":   { "value": "-" }, "velaric": { "value": "-" }, "tense":   { "value": "0" },
+        "long":    { "value": "-" }, "hitone":  { "value": "0" }, "hireg":   { "value": "0" }
+      }
+    },
+    {
+      "ipa": "b",
+      "is_base": true,
+      "features": {
+        "syl":     { "value": "-" }, "son":     { "value": "-" }, "cons":    { "value": "+" },
+        "cont":    { "value": "-" }, "delrel":  { "value": "-" }, "lat":     { "value": "-" },
+        "nas":     { "value": "-" }, "strid":   { "value": "-" }, "voi":     { "value": "+" },
+        "sg":      { "value": "-" }, "cg":      { "value": "-" }, "ant":     { "value": "+" },
+        "cor":     { "value": "-" }, "distr":   { "value": "-" }, "lab":     { "value": "+" },
+        "hi":      { "value": "-" }, "lo":      { "value": "-" }, "back":    { "value": "-" },
+        "round":   { "value": "-" }, "velaric": { "value": "-" }, "tense":   { "value": "0" },
+        "long":    { "value": "-" }, "hitone":  { "value": "0" }, "hireg":   { "value": "0" }
+      }
+    },
+    {
+      "ipa": "d",
+      "is_base": true,
+      "features": {
+        "syl":     { "value": "-" }, "son":     { "value": "-" }, "cons":    { "value": "+" },
+        "cont":    { "value": "-" }, "delrel":  { "value": "-" }, "lat":     { "value": "-" },
+        "nas":     { "value": "-" }, "strid":   { "value": "-" }, "voi":     { "value": "+" },
+        "sg":      { "value": "-" }, "cg":      { "value": "-" }, "ant":     { "value": "+" },
+        "cor":     { "value": "+" }, "distr":   { "value": "-" }, "lab":     { "value": "-" },
+        "hi":      { "value": "-" }, "lo":      { "value": "-" }, "back":    { "value": "-" },
+        "round":   { "value": "-" }, "velaric": { "value": "-" }, "tense":   { "value": "0" },
+        "long":    { "value": "-" }, "hitone":  { "value": "0" }, "hireg":   { "value": "0" }
+      }
+    },
+    {
+      "ipa": "d͡ʒ",
+      "is_base": true,
+      "features": {
+        "syl":     { "value": "-" }, "son":     { "value": "-" }, "cons":    { "value": "+" },
+        "cont":    { "value": "-" }, "delrel":  { "value": "+" }, "lat":     { "value": "-" },
+        "nas":     { "value": "-" }, "strid":   { "value": "+" }, "voi":     { "value": "+" },
+        "sg":      { "value": "-" }, "cg":      { "value": "-" }, "ant":     { "value": "-" },
+        "cor":     { "value": "+" }, "distr":   { "value": "+" }, "lab":     { "value": "-" },
+        "hi":      { "value": "+" }, "lo":      { "value": "-" }, "back":    { "value": "-" },
+        "round":   { "value": "-" }, "velaric": { "value": "-" }, "tense":   { "value": "0" },
+        "long":    { "value": "-" }, "hitone":  { "value": "0" }, "hireg":   { "value": "0" }
+      }
+    },
+    {
+      "ipa": "a",
+      "is_base": true,
+      "features": {
+        "syl":     { "value": "+" }, "son":     { "value": "+" }, "cons":    { "value": "-" },
+        "cont":    { "value": "+" }, "delrel":  { "value": "-" }, "lat":     { "value": "-" },
+        "nas":     { "value": "-" }, "strid":   { "value": "-" }, "voi":     { "value": "+" },
+        "sg":      { "value": "-" }, "cg":      { "value": "-" }, "ant":     { "value": "-" },
+        "cor":     { "value": "-" }, "distr":   { "value": "-" }, "lab":     { "value": "-" },
+        "hi":      { "value": "-" }, "lo":      { "value": "+" }, "back":    { "value": "+" },
+        "round":   { "value": "-" }, "velaric": { "value": "-" }, "tense":   { "value": "+" },
+        "long":    { "value": "-" }, "hitone":  { "value": "0" }, "hireg":   { "value": "0" }
+      }
+    },
+    {
+      "ipa": "u",
+      "is_base": true,
+      "features": {
+        "syl":     { "value": "+" }, "son":     { "value": "+" }, "cons":    { "value": "-" },
+        "cont":    { "value": "+" }, "delrel":  { "value": "-" }, "lat":     { "value": "-" },
+        "nas":     { "value": "-" }, "strid":   { "value": "-" }, "voi":     { "value": "+" },
+        "sg":      { "value": "-" }, "cg":      { "value": "-" }, "ant":     { "value": "-" },
+        "cor":     { "value": "-" }, "distr":   { "value": "-" }, "lab":     { "value": "+" },
+        "hi":      { "value": "+" }, "lo":      { "value": "-" }, "back":    { "value": "+" },
+        "round":   { "value": "+" }, "velaric": { "value": "-" }, "tense":   { "value": "+" },
+        "long":    { "value": "-" }, "hitone":  { "value": "0" }, "hireg":   { "value": "0" }
+      }
+    },
+    {
+      "ipa": "ʃ",
+      "is_base": true,
+      "features": {
+        "syl":     { "value": "-" }, "son":     { "value": "-" }, "cons":    { "value": "+" },
+        "cont":    { "value": "+" }, "delrel":  { "value": "-" }, "lat":     { "value": "-" },
+        "nas":     { "value": "-" }, "strid":   { "value": "+" }, "voi":     { "value": "-" },
+        "sg":      { "value": "-" }, "cg":      { "value": "-" }, "ant":     { "value": "-" },
+        "cor":     { "value": "+" }, "distr":   { "value": "+" }, "lab":     { "value": "-" },
+        "hi":      { "value": "+" }, "lo":      { "value": "-" }, "back":    { "value": "-" },
+        "round":   { "value": "-" }, "velaric": { "value": "-" }, "tense":   { "value": "0" },
+        "long":    { "value": "-" }, "hitone":  { "value": "0" }, "hireg":   { "value": "0" }
+      }
+    },
+    {
+      "ipa": "s",
+      "is_base": true,
+      "features": {
+        "syl":     { "value": "-" }, "son":     { "value": "-" }, "cons":    { "value": "+" },
+        "cont":    { "value": "+" }, "delrel":  { "value": "-" }, "lat":     { "value": "-" },
+        "nas":     { "value": "-" }, "strid":   { "value": "+" }, "voi":     { "value": "-" },
+        "sg":      { "value": "-" }, "cg":      { "value": "-" }, "ant":     { "value": "+" },
+        "cor":     { "value": "+" }, "distr":   { "value": "-" }, "lab":     { "value": "-" },
+        "hi":      { "value": "-" }, "lo":      { "value": "-" }, "back":    { "value": "-" },
+        "round":   { "value": "-" }, "velaric": { "value": "-" }, "tense":   { "value": "0" },
+        "long":    { "value": "-" }, "hitone":  { "value": "0" }, "hireg":   { "value": "0" }
+      }
+    }
+  ]
+}

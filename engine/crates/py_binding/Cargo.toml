@@ -1,0 +1,15 @@
+[package]
+name        = "py_binding"
+version     = "0.1.0"
+edition     = "2021"
+description = "Phonetic poetry analysis engine — Python binding"
+license     = "AGPL-3.0-or-later"
+
+[lib]
+name   = "phonetics_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+core       = { path = "../core" }
+pyo3       = { version = "0.23", features = ["extension-module"] }
+serde_json = { workspace = true }

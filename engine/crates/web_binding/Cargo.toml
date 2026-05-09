@@ -1,0 +1,16 @@
+[package]
+name         = "ipa-poetry-engine"
+version      = "0.1.0"
+edition      = "2021"
+description  = "IPA poetry analysis engine — WebAssembly / npm binding"
+license      = "AGPL-3.0-or-later"
+repository   = "https://github.com/Tilitronic/ipa-poetry-engine"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Aliased to avoid collision with Rust's built-in `core` crate
+phonetic_core = { path = "../core", package = "core" }
+wasm-bindgen = "0.2"
+serde_json   = { workspace = true }
