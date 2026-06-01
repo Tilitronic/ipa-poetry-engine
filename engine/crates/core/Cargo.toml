@@ -5,6 +5,9 @@ edition     = "2021"
 description = "Phonetic poetry analysis engine — core library"
 license     = "AGPL-3.0-or-later"
 
+[build-dependencies]
+serde_json = "1"
+
 [dependencies]
 ndarray    = { workspace = true }
 serde      = { workspace = true }

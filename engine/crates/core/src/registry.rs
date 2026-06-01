@@ -79,6 +79,10 @@ fn parse_value(v: &str) -> f32 {
     }
 }
 
+// ── Generated data (produced by build.rs at compile time) ────────────────
+// `phonemes_data.rs` contains PHONEMES, PHONEME_COUNT, PHONEME_DB_HASH.
+include!(concat!(env!("OUT_DIR"), "/phonemes_data.rs"));
+
 // ────────────────────────────────────────────────────────────────────────────
 // Public API
 // ────────────────────────────────────────────────────────────────────────────
@@ -89,7 +93,22 @@ pub struct FeatureRegistry {
 }
 
 impl FeatureRegistry {
+    /// Build the registry from the static data embedded at compile time.
+    ///
+    /// Zero JSON parsing — all feature vectors are `[f32; 24]` literals
+    /// baked directly into the binary by `build.rs`.
+    pub fn build() -> Self {
+        let mut vectors = HashMap::with_capacity(PHONEME_COUNT);
+        for (ipa, arr) in PHONEMES {
+            vectors.insert((*ipa).to_string(), Array1::from_iter(arr.iter().copied()));
+        }
+        Self { vectors }
+    }
+
     /// Build a registry from raw JSON bytes.
+    ///
+    /// Kept for unit tests that construct minimal registries inline.
+    /// Production code should use `build()` instead.
     pub fn from_json_bytes(json: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
         let db: RawDatabase = serde_json::from_slice(json)?;
         let mut vectors = HashMap::with_capacity(db.phonemes.len());
@@ -107,7 +126,7 @@ impl FeatureRegistry {
         Ok(Self { vectors })
     }
 
-    /// Convenience: load directly from a file path.
+    /// Convenience: load directly from a file path (CLI / server use only).
     pub fn from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let bytes = std::fs::read(path)?;
         Self::from_json_bytes(&bytes)

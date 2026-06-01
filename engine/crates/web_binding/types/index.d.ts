@@ -615,25 +615,18 @@ export interface StreamAnalysisResult {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Load the phoneme feature registry. Must be called once before `analyze()`.
- *
- * @param phonemesJson - Full content of `phonemes.json` (~1 MB, 6367 segments).
- * @throws If JSON is malformed or if called more than once.
- *
- * @example
- * const phonemesJson = await fetch("/assets/phonemes.json").then(r => r.text());
- * init(phonemesJson);
- */
-export function init(phonemesJson: string): void;
-
-/**
  * Analyse an IPA Stream v1.1 document.
+ *
+ * The phoneme registry is embedded in the WASM binary and initialised
+ * automatically on first call — no separate `init()` step required.
  *
  * @param streamJson - JSON-serialised {@link IpaStream}.
  * @returns JSON-serialised {@link StreamAnalysisResult}.
- * @throws If `init()` has not been called, or if the stream JSON is invalid.
+ * @throws If the stream JSON is invalid or the format version is not `"1.1"`.
  *
  * @example
+ * import init_wasm, { analyze } from "ipa-poetry-engine";
+ * await init_wasm();
  * const result: StreamAnalysisResult = JSON.parse(analyze(JSON.stringify(stream)));
  *
  * // ABBA pattern detection:
@@ -652,6 +645,22 @@ export function init(phonemesJson: string): void;
  * // endRhymes → [{ lineIdx: 0, rhymeGroup: "A" }, { lineIdx: 1, rhymeGroup: "B" }, ...]
  */
 export function analyze(streamJson: string): string;
+
+/**
+ * Returns the FNV-1a (64-bit) hex digest of the embedded IPA phoneme database.
+ *
+ * Identical for every binary compiled from the same `phonemes.json`.
+ * Use this to verify that multiple consumers share the exact same IPA library
+ * and will produce mathematically compatible feature vectors.
+ *
+ * @returns 16-character lowercase hex string, e.g. `"a3f1c8e2b4d70591"`
+ *
+ * @example
+ * // Assert shared library across worker instances:
+ * const hash = phonemeDbHash();
+ * console.assert(hash === expectedHash, `IPA library mismatch: ${hash}`);
+ */
+export function phonemeDbHash(): string;
 
 /**
  * Returns the IPA Stream format version supported by this build.

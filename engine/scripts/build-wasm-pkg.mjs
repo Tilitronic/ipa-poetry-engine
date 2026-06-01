@@ -14,6 +14,7 @@ const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const root = resolve(scriptDir, "..");
 const pkgDir = resolve(root, "crates/web_binding/pkg-bundler");
 const pkgJsonPath = resolve(pkgDir, "package.json");
+const wasmGluePath = resolve(pkgDir, "ipa_poetry_engine_bg.js");
 
 function readPreviousVersion(path) {
   if (!existsSync(path)) return null;
@@ -36,9 +37,7 @@ const wasmPackCandidates = [
 
 const wasmPack = wasmPackCandidates.find((c) => {
   if (c === "wasm-pack") {
-    return (
-      spawnSync(c, ["--version"], { stdio: "ignore", shell: true }).status === 0
-    );
+    return spawnSync(c, ["--version"], { stdio: "ignore" }).status === 0;
   }
   return existsSync(c);
 });
@@ -72,13 +71,35 @@ const result = spawnSync(
   ],
   {
     stdio: "inherit",
-    shell: true,
     cwd: root,
     env: { ...process.env, PATH: childPath },
   },
 );
 
 if (result.status !== 0) process.exit(result.status ?? 1);
+
+// ── patch wasm-bindgen glue for Vite/Firefox module duplication edge-case ─
+// In some Vite worker graphs Firefox can evaluate two instances of
+// ipa_poetry_engine_bg.js with different query strings. One instance receives
+// __wbg_set_wasm(), while the other services imported callbacks from WASM.
+// Share the wasm instance through globalThis to keep externref init stable.
+console.log("==> Patching wasm glue for duplicate-module safety");
+const wasmGlue = readFileSync(wasmGluePath, "utf8");
+const patchedWasmGlue = wasmGlue
+  .replace(
+    "export function __wbindgen_init_externref_table() {\n    const table = wasm.__wbindgen_externrefs;",
+    "export function __wbindgen_init_externref_table() {\n    const wasmInstance = wasm ?? globalThis.__ipa_poetry_engine_wasm;\n    if (!wasmInstance) {\n        throw new Error('ipa-poetry-engine: WASM module is not initialised');\n    }\n    const table = wasmInstance.__wbindgen_externrefs;",
+  )
+  .replace(
+    "export function __wbg_set_wasm(val) {\n    wasm = val;\n}",
+    "export function __wbg_set_wasm(val) {\n    wasm = val;\n    globalThis.__ipa_poetry_engine_wasm = val;\n}",
+  );
+
+if (patchedWasmGlue !== wasmGlue) {
+  writeFileSync(wasmGluePath, patchedWasmGlue, "utf8");
+} else {
+  console.warn("[warn] wasm glue patch was not applied (template mismatch)");
+}
 
 // ── patch package.json ─────────────────────────────────────────────────────
 console.log("==> Patching pkg-bundler/package.json");
