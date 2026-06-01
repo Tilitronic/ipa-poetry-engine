@@ -19,6 +19,7 @@
 //! ```
 
 use ndarray::Array1;
+use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::registry::{FeatureRegistry, FEATURE_NAMES};
@@ -34,7 +35,7 @@ pub const FORMAT_VERSION: &str = "1.1";
 // Serde structs — mirror the JSON schema exactly
 // ────────────────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, JsonSchema)]
 pub struct IpaStreamMetadata {
     pub version: String,
     #[serde(rename = "generatedAt")]
@@ -48,7 +49,7 @@ pub struct IpaStreamMetadata {
 }
 
 /// One syllable inside a word token.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, JsonSchema)]
 pub struct IpaStreamSyllable {
     /// Full IPA string of the syllable (e.g. `"ʃuk"`).
     pub ipa: String,
@@ -64,7 +65,7 @@ pub struct IpaStreamSyllable {
 }
 
 /// Source / reliability of the stress assignment.
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum StressSource {
     /// High-reliability dictionary lookup.
@@ -76,7 +77,7 @@ pub enum StressSource {
 }
 
 /// A word element in the IPA stream.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct IpaStreamWord {
     /// Stable token ID used for round-trip annotations.
@@ -96,7 +97,7 @@ pub struct IpaStreamWord {
 }
 
 /// One element of the flat stream array.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamElement {
     Word(IpaStreamWord),
@@ -111,7 +112,7 @@ pub enum StreamElement {
 }
 
 /// Top-level IPA Stream document.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, JsonSchema)]
 pub struct IpaStream {
     pub metadata: IpaStreamMetadata,
     pub stream: Vec<StreamElement>,

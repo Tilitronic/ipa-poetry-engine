@@ -1,4 +1,20 @@
 {
+"structurality": {
+"rhythm": { "rawSignal": 0.82, "baseline": 0.5, "score": 0.64 },
+"localPhonemePatterning": { "rawSignal": 0.44, "baseline": 0.18, "score": 0.32 },
+"soundSequencePatterning": { "rawSignal": 0.58, "baseline": 0.1, "score": 0.53 },
+"pausePatterning": { "rawSignal": 0.49, "baseline": 0.2, "score": 0.36 },
+"crossLevelCoupling": { "rawSignal": 0.61, "baseline": 0.25, "score": 0.48 },
+"global": 0.49,
+"weights": {
+"rhythm": 0.25,
+"localPhonemePatterning": 0.125,
+"soundSequencePatterning": 0.375,
+"pausePatterning": 0.125,
+"crossLevelCoupling": 0.125
+},
+"interdependencyModel": "pairwise_line_agreement_v1"
+},
 "lines": [
 {
 "line_index": 0,

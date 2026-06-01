@@ -1,0 +1,243 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IpaStream",
+  "description": "Top-level IPA Stream document.",
+  "type": "object",
+  "required": [
+    "metadata",
+    "stream"
+  ],
+  "properties": {
+    "metadata": {
+      "$ref": "#/definitions/IpaStreamMetadata"
+    },
+    "stream": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/StreamElement"
+      }
+    }
+  },
+  "definitions": {
+    "IpaStreamMetadata": {
+      "type": "object",
+      "required": [
+        "confirmedLineCount",
+        "generatedAt",
+        "languagesPresent",
+        "totalWordCount",
+        "version"
+      ],
+      "properties": {
+        "confirmedLineCount": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "languagesPresent": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "totalWordCount": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "IpaStreamSyllable": {
+      "description": "One syllable inside a word token.",
+      "type": "object",
+      "required": [
+        "grapheme",
+        "ipa",
+        "isOpen",
+        "stressed",
+        "tokens"
+      ],
+      "properties": {
+        "grapheme": {
+          "description": "Grapheme characters aligned to this syllable.",
+          "type": "string"
+        },
+        "ipa": {
+          "description": "Full IPA string of the syllable (e.g. `\"ʃuk\"`).",
+          "type": "string"
+        },
+        "isOpen": {
+          "description": "Whether the syllable ends on a vowel (open syllable).",
+          "type": "boolean"
+        },
+        "stressed": {
+          "description": "Whether this is the stressed syllable.",
+          "type": "boolean"
+        },
+        "tokens": {
+          "description": "Discrete phoneme symbols in order (e.g. `[\"ʃ\",\"u\",\"k\"]`).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "StreamElement": {
+      "description": "One element of the flat stream array.",
+      "oneOf": [
+        {
+          "description": "A word element in the IPA stream.",
+          "type": "object",
+          "required": [
+            "id",
+            "language",
+            "lineIndex",
+            "original",
+            "stressSource",
+            "stressedSyllable",
+            "syllableCount",
+            "syllables",
+            "type",
+            "wordIndex"
+          ],
+          "properties": {
+            "id": {
+              "description": "Stable token ID used for round-trip annotations.",
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "lineIndex": {
+              "description": "0-based index of the confirmed line this word belongs to.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0.0
+            },
+            "original": {
+              "description": "Original text as it appears in the poem.",
+              "type": "string"
+            },
+            "stressSource": {
+              "$ref": "#/definitions/StressSource"
+            },
+            "stressedSyllable": {
+              "description": "0-based index of the stressed syllable; `-1` if no stress.",
+              "type": "integer",
+              "format": "int32"
+            },
+            "syllableCount": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0.0
+            },
+            "syllables": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/IpaStreamSyllable"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "word"
+              ]
+            },
+            "wordIndex": {
+              "description": "0-based position of the word within its line.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "whitespace"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Punctuation token (comma, period, dash, etc.). `text` is already normalised by the frontend (e.g. en-dash → em-dash).",
+          "type": "object",
+          "required": [
+            "text",
+            "type"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "punctuation"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "lineIndex",
+            "type"
+          ],
+          "properties": {
+            "lineIndex": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "line_break"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "StressSource": {
+      "description": "Source / reliability of the stress assignment.",
+      "oneOf": [
+        {
+          "description": "High-reliability dictionary lookup.",
+          "type": "string",
+          "enum": [
+            "dict"
+          ]
+        },
+        {
+          "description": "Medium-reliability ML predictor (OOV words).",
+          "type": "string",
+          "enum": [
+            "ml"
+          ]
+        },
+        {
+          "description": "Manually confirmed by user — absolute reliability.",
+          "type": "string",
+          "enum": [
+            "manual"
+          ]
+        }
+      ]
+    }
+  }
+}

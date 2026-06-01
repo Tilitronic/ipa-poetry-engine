@@ -13,6 +13,7 @@
 //! frontend can map each result back to the exact phoneme in the original IPA
 //! Stream document and render it with the appropriate opacity.
 
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::algorithms::distance::cosine_similarity;
@@ -57,7 +58,7 @@ impl Default for EchoParams {
 // ────────────────────────────────────────────────────────────────────────────
 
 /// Stable reference to one phoneme; the frontend uses this as a lookup key.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PhonemeRef {
     /// Stable token ID of the containing word.
@@ -71,7 +72,7 @@ pub struct PhonemeRef {
 }
 
 /// Echo annotation for one phoneme.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EchoAnnotation {
     /// Identifies the phoneme in the original document.

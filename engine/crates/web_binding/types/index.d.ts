@@ -164,10 +164,10 @@ export interface WordAnnotation {
 
 /** Type of phonological cluster detected by the sliding-window density algorithm. */
 export type ClusterKind =
-  | "sibilant"   // strident feature — /s z ʃ ʒ/ family
-  | "affricate"  // delayed-release feature — /tʃ dʒ ts dz/ family
-  | "nasal"      // nasal feature — /m n ŋ/ family
-  | "lateral"    // lateral feature — /l lʲ/ family
+  | "sibilant" // strident feature — /s z ʃ ʒ/ family
+  | "affricate" // delayed-release feature — /tʃ dʒ ts dz/ family
+  | "nasal" // nasal feature — /m n ŋ/ family
+  | "lateral" // lateral feature — /l lʲ/ family
   | "assonance"; // syllabic feature — vowel density
 
 /**
@@ -200,8 +200,8 @@ export interface SyllableRef {
 
 /** How a syllable's actual stress relates to the detected metre. */
 export type DeviationType =
-  | "match"    // actual stress agrees with the expected metrical position
-  | "pyrrhic"  // expected stress was absent (skipped)
+  | "match" // actual stress agrees with the expected metrical position
+  | "pyrrhic" // expected stress was absent (skipped)
   | "spondee"; // unexpected stress on a weak position
 
 /** Stress annotation for one syllable. */
@@ -218,9 +218,9 @@ export interface SyllableAnnotation {
 
 /** How the line ends relative to its last stressed syllable. */
 export type Clausula =
-  | "masculine"      // last stress on the final syllable
-  | "feminine"       // last stress on the penultimate syllable
-  | "dactylic"       // last stress on the antepenultimate syllable
+  | "masculine" // last stress on the final syllable
+  | "feminine" // last stress on the penultimate syllable
+  | "dactylic" // last stress on the antepenultimate syllable
   | "hyperdactylic"; // last stress four+ syllables from the end
 
 /** Full rhythm analysis for one confirmed poetic line. */
@@ -285,6 +285,181 @@ export interface EchoAnnotation {
   opacity: number;
 }
 
+// ── Full per-phoneme payload ─────────────────────────────────────────────
+
+/** Canonical phonological feature metadata item (Panphon-compatible). */
+export interface PhonemeFeatureSchemaItem {
+  /** Feature key (e.g. "syl", "cons", "lab"). */
+  key: string;
+  /** Human-readable description (e.g. "syllabic"). */
+  description: string;
+}
+
+/** Tri-state feature encoding legend used in `phonemes.features[].sign`. */
+export interface PhonemeFeatureEncoding {
+  positive: string;
+  negative: string;
+  unspecified: string;
+}
+
+/** One named feature value for a phoneme token. */
+export interface PhonemeFeatureValue {
+  key: string;
+  description: string;
+  /** Numeric encoded value from the feature vector (-1, 0, +1). */
+  value: number;
+  /** Sign label corresponding to `value`: "+" | "-" | "0". */
+  sign: "+" | "-" | "0";
+}
+
+/** Derived natural (intrinsic) properties normalised to [0, 1]. */
+export interface PhonemeNaturalProfile {
+  classHint: string;
+  vowelness: number;
+  consonantality: number;
+  sonority: number;
+  voicing: number;
+  labiality: number;
+  coronality: number;
+  nasality: number;
+  stridency: number;
+  laterality: number;
+  highness: number;
+  openness: number;
+  backness: number;
+  roundedness: number;
+  tenseness: number;
+  lengthness: number;
+  toneHeight: number;
+}
+
+/** Contribution of one detected cluster kind to a concrete phoneme. */
+export interface PhonemeClusterContribution {
+  kind: ClusterKind;
+  peak: number;
+}
+
+/** Computed (contextual) metrics attached to one phoneme. */
+export interface PhonemeComputedMetrics {
+  lineIndex: number;
+  wordIndex: number;
+  isStressedSyllable: boolean;
+  stressWeight: number;
+  rhymeGroup: string | null;
+  structuralRhymeGroup: string | null;
+  nearestMatchFlatIndex: number | null;
+  echoGap: number;
+  echoOpacity: number;
+  clusterMembershipCount: number;
+  clusterPeakMax: number;
+  clusterContributions: PhonemeClusterContribution[];
+}
+
+/** Full payload for one phoneme in stream order. */
+export interface PhonemeRecord {
+  source: PhonemeRef;
+  symbol: string;
+  /** Raw 24-dim vector in canonical feature order. */
+  vector: number[];
+  /** Named feature values (same order as `phonemes.featureSchema`). */
+  features: PhonemeFeatureValue[];
+  naturalProfile: PhonemeNaturalProfile;
+  computedMetrics: PhonemeComputedMetrics;
+}
+
+/** Full phoneme layer sorted by `source.flatIndex`. */
+export interface PhonemeLayer {
+  total: number;
+  sortedBy: "source.flatIndex asc" | string;
+  featureSchema: PhonemeFeatureSchemaItem[];
+  valueEncoding: PhonemeFeatureEncoding;
+  entries: PhonemeRecord[];
+}
+
+// ── Mol* transcription payload ───────────────────────────────────────────
+
+/** Contact semantics for Mol* pseudo-structure links. */
+export type MolstarContactKind =
+  | "similarity_weak"
+  | "rhyme_strong"
+  | "pause_pattern";
+
+/** Secondary-structure segment in the generated pseudo-chain. */
+export interface MolstarSecondaryElement {
+  kind: "helix" | "sheet" | "coil" | string;
+  startResidueIndex: number;
+  endResidueIndex: number;
+  note: string;
+}
+
+/** One cross-residue relation used to emulate tertiary interactions. */
+export interface MolstarContact {
+  kind: MolstarContactKind;
+  fromResidueIndex: number;
+  toResidueIndex: number;
+  strength: number;
+  equilibriumDistance: number;
+  decayLength: number;
+  springConstant: number;
+  energy: number;
+  note: string;
+}
+
+/** Mapping between residue positions and original IPA phonemes. */
+export interface MolstarResidueMapItem {
+  residueIndex: number;
+  aminoAcid: string;
+  aminoAcidName: string;
+  source: PhonemeRef;
+  symbol: string;
+  lineIndex: number;
+  wordIndex: number;
+  language: string;
+  originalWord: string;
+  syllableIpa: string;
+  syllableGrapheme: string;
+}
+
+/** Contiguous residue span for one original word token. */
+export interface MolstarWordSpan {
+  wordId: string;
+  lineIndex: number;
+  wordIndex: number;
+  language: string;
+  originalWord: string;
+  ipaWord: string;
+  residueStart: number;
+  residueEnd: number;
+}
+
+/** Biophysical proxy model settings used for contact/geometry synthesis. */
+export interface MolstarBiophysicalModel {
+  modelName: string;
+  backboneStep: number;
+  contactEnergyUnit: string;
+  distanceUnit: string;
+  similarityContactCutoff: number;
+  pausePatternMinRepeat: number;
+  equations: string[];
+}
+
+/** Mol*-ready pseudo-protein transcription of the IPA analysis. */
+export interface MolstarTranscription {
+  formatVersion: string;
+  chainId: string;
+  sequence: string;
+  fasta: string;
+  pdb: string;
+  secondaryStructure: MolstarSecondaryElement[];
+  contacts: MolstarContact[];
+  residueMap: MolstarResidueMapItem[];
+  wordSpans: MolstarWordSpan[];
+  ipaLines: string[];
+  originalLines: string[];
+  biophysicalModel: MolstarBiophysicalModel;
+  interpretation: string[];
+}
+
 // ── Prosodic pauses ───────────────────────────────────────────────────────
 
 /**
@@ -308,6 +483,97 @@ export interface PauseAnnotation {
   strength: number;
 }
 
+// ── Structural complexity / global structurality ─────────────────────────
+
+/**
+ * One normalised structurality component.
+ *
+ * Interpretation:
+ * - `rawSignal`  : directly measured signal in [0, 1]
+ * - `baseline`   : heuristic null-model floor below which the signal is treated
+ *                  as indistinguishable from ordinary distributional noise
+ * - `score`      : baseline-corrected structural complexity in [0, 1]
+ */
+export interface StructuralityComponent {
+  /** Raw measured signal before baseline correction. */
+  rawSignal: number;
+  /** Null-model floor for this plane. */
+  baseline: number;
+  /** Baseline-corrected structural complexity coefficient in [0, 1]. */
+  score: number;
+}
+
+/**
+ * Weights used to build the global structurality score.
+ *
+ * The weights sum to 1.0.
+ */
+export interface StructuralityWeights {
+  /** Rhythmic regularity and metrical consistency. */
+  rhythm: number;
+  /** Local phoneme-level patterning: echo density + cluster density. */
+  localPhonemePatterning: number;
+  /** Larger sound-sequence patterning: rhyme and structural rhyme. */
+  soundSequencePatterning: number;
+  /** Pause regularity and pause-load organisation. */
+  pausePatterning: number;
+  /** Coupling between line-level signals from multiple planes. */
+  crossLevelCoupling: number;
+}
+
+/**
+ * Cross-plane structural complexity report.
+ *
+ * The engine analyses several planes independently, converts each one into a
+ * baseline-corrected coefficient in [0, 1], and then aggregates them into a
+ * global structurality score.
+ *
+ * `crossLevelCoupling` is not computed with ANOVA.
+ * Instead, the engine builds one line-level signal per plane and measures
+ * pairwise agreement between those continuous signals using a hybrid of:
+ * - level agreement: `1 - mean(abs(x_i - y_i))`
+ * - shape agreement: positive Pearson correlation when variance exists
+ *
+ * This is better suited than ANOVA because the problem is not “do categorical
+ * groups have different means?”, but “do multiple continuous structural signals
+ * rise and fall together across the poem?”.
+ */
+export interface StructuralityAnalysis {
+  /** Rhythmic structural complexity. */
+  rhythm: StructuralityComponent;
+  /** Local phoneme-level patterning structural complexity. */
+  localPhonemePatterning: StructuralityComponent;
+  /** Sound-sequence structural complexity. */
+  soundSequencePatterning: StructuralityComponent;
+  /** Pause structural complexity. */
+  pausePatterning: StructuralityComponent;
+  /** Coupling / interdependence of the structural planes. */
+  crossLevelCoupling: StructuralityComponent;
+  /**
+   * Weighted global structurality score in [0, 1].
+   * 0 = no structure above null floor, 1 = maximally loaded structure.
+   */
+  global: number;
+  /** Explicit weighting scheme used for the global score. */
+  weights: StructuralityWeights;
+  /** Name of the interdependency model used by this build. */
+  interdependencyModel: "pairwise_line_agreement_v1" | string;
+}
+
+/** Analyzer identity and build version metadata. */
+export interface AnalyzerInfo {
+  name: string;
+  version: string;
+}
+
+/** Response schema descriptor for contract-aware consumers. */
+export interface ResponseSchemaInfo {
+  name: string;
+  version: string;
+  dialect: string;
+  file: string;
+}
+
 // ── Top-level result ──────────────────────────────────────────────────────
 
 /**
@@ -319,6 +585,10 @@ export interface PauseAnnotation {
 export interface StreamAnalysisResult {
   /** IPA Stream format version this result was produced from. Always "1.1". */
   version: "1.1";
+  /** Analyzer name and version metadata. */
+  analyzer: AnalyzerInfo;
+  /** Response schema descriptor metadata. */
+  responseSchema: ResponseSchemaInfo;
   /**
    * Per-word annotations.
    * Key: IpaStreamWord.id  →  Value: WordAnnotation
@@ -332,6 +602,12 @@ export interface StreamAnalysisResult {
   echo: EchoAnnotation[];
   /** Prosodic pauses created by punctuation and/or line breaks. */
   pauses: PauseAnnotation[];
+  /** Full per-phoneme payload: vectors, intrinsic traits, computed metrics. */
+  phonemes: PhonemeLayer;
+  /** Mol*-ready pseudo-protein transcription for immediate rendering. */
+  molstar: MolstarTranscription;
+  /** Multi-plane structural complexity report. */
+  structurality: StructuralityAnalysis;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

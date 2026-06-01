@@ -5,3 +5,4 @@ pub mod echo;
 pub mod pause;
 pub mod rhythm;
 pub mod structural;
+pub mod structurality;

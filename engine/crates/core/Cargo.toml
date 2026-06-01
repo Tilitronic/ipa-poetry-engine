@@ -9,6 +9,7 @@ license     = "AGPL-3.0-or-later"
 ndarray    = { workspace = true }
 serde      = { workspace = true }
 serde_json = { workspace = true }
+schemars   = { workspace = true }
 
 [dev-dependencies]
 approx = "0.5"

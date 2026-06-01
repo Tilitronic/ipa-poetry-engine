@@ -1,0 +1,35 @@
+name: Contract Schema Check
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  contract-drift:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: engine
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install JS dependencies
+        run: npm install
+
+      - name: Generate schemas and TS types
+        run: npm run contract:generate
+
+      - name: Validate no drift
+        run: git diff --exit-code -- schemas crates/web_binding/types/generated

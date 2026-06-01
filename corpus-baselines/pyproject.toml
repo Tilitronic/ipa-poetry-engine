@@ -1,0 +1,19 @@
+[project]
+name = "corpus-baselines"
+version = "0.1.0"
+description = "Separate baseline-analysis project for Ukrainian prose and poetry corpora"
+requires-python = ">=3.13"
+readme = "README.md"
+dependencies = []
+
+[project.scripts]
+corpus-baselines = "corpus_baselines.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", ".."]

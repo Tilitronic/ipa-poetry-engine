@@ -9,6 +9,7 @@
 //! All annotations carry `word_id` + `syllable_index` so the frontend can map
 //! them back to individual syllables in the original IPA Stream document.
 
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::stream::IpaStreamWord;
@@ -18,7 +19,7 @@ use crate::stream::IpaStreamWord;
 // ────────────────────────────────────────────────────────────────────────────
 
 /// Stable reference to one syllable; the frontend uses this as a lookup key.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SyllableRef {
     /// Stable token ID of the containing word (from IPA Stream `id` field).
@@ -30,7 +31,7 @@ pub struct SyllableRef {
 }
 
 /// How a syllable's actual stress relates to the detected metre.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviationType {
     /// Actual and expected stress agree.
@@ -42,7 +43,7 @@ pub enum DeviationType {
 }
 
 /// Stress annotation for one syllable.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SyllableAnnotation {
     /// Identifies the syllable for frontend mapping.
@@ -56,7 +57,7 @@ pub struct SyllableAnnotation {
 }
 
 /// How the line ends relative to its last stressed syllable.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Clausula {
     /// Last stress on the final syllable.
@@ -72,7 +73,7 @@ pub enum Clausula {
 /// Full rhythm analysis result for one confirmed line.
 ///
 /// Serialises with camelCase field names for the round-trip protocol.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LineRhythm {
     /// 0-based index of the confirmed line in the poem.

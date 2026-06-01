@@ -10,6 +10,16 @@ $crate    = "$root\crates\web_binding"
 $pkg      = "$crate\pkg"
 $srcTypes = "$crate\types\index.d.ts"
 $srcLic   = "$root\..\LICENSE"
+$pkgJsonPath = "$pkg\package.json"
+
+$previousVersion = $null
+if (Test-Path $pkgJsonPath) {
+    try {
+        $previousVersion = (Get-Content $pkgJsonPath -Raw | ConvertFrom-Json).version
+    } catch {
+        $previousVersion = $null
+    }
+}
 
 if (Test-Path $pkg) {
     Write-Host "==> Removing stale pkg/" -ForegroundColor Cyan
@@ -21,10 +31,23 @@ wasm-pack build $crate --target web --out-dir pkg
 if ($LASTEXITCODE -ne 0) { throw "wasm-pack failed" }
 
 Write-Host "==> Patching pkg/package.json" -ForegroundColor Cyan
+$generatedVersion = $null
+if (Test-Path $pkgJsonPath) {
+    try {
+        $generatedVersion = (Get-Content $pkgJsonPath -Raw | ConvertFrom-Json).version
+    } catch {
+        $generatedVersion = $null
+    }
+}
+
+$effectiveVersion = $previousVersion
+if (-not $effectiveVersion) { $effectiveVersion = $generatedVersion }
+if (-not $effectiveVersion) { $effectiveVersion = "0.1.0" }
+
 $json = [ordered]@{
     name        = "ipa-poetry-engine"
     type        = "module"
-    version     = "0.1.0"
+    version     = $effectiveVersion
     description = "IPA poetry analysis engine - WebAssembly / npm binding"
     author      = "Tilitronic"
     license     = "AGPL-3.0-or-later"

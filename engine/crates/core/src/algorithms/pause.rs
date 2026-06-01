@@ -8,6 +8,7 @@
 //! Each [`PauseAnnotation`] records the word that precedes the pause and a
 //! normalised `strength` in `[0.0, 1.0]`.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use crate::stream::{IpaStream, StreamElement};
 
@@ -47,7 +48,7 @@ pub fn pause_strength(punct: Option<&str>, has_line_break: bool) -> f32 {
 }
 
 /// A prosodic pause detected in the stream.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PauseAnnotation {
     /// The `id` of the word immediately before this pause.

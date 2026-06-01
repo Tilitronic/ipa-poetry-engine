@@ -43,6 +43,33 @@ pub const FEATURE_NAMES: [&str; 24] = [
     "back", "round", "velaric", "tense", "long", "hitone", "hireg",
 ];
 
+pub const FEATURE_DESCRIPTIONS: [&str; 24] = [
+    "syllabic",
+    "sonorant",
+    "consonantal",
+    "continuant",
+    "delayed release",
+    "lateral",
+    "nasal",
+    "strident",
+    "voice",
+    "spread glottis",
+    "constricted glottis",
+    "anterior",
+    "coronal",
+    "distributed",
+    "labial",
+    "high",
+    "low",
+    "back",
+    "round",
+    "velaric",
+    "tense",
+    "long",
+    "high tone",
+    "high register",
+];
+
 /// Convert a single feature value string to `f32`.
 fn parse_value(v: &str) -> f32 {
     match v {

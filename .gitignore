@@ -10,3 +10,7 @@ engine/crates/web_binding/pkg-node/
 
 node_modules/
 dist/
+
+IPA/corpora/raw/
+IPA/corpora/cache/
+IPA/corpus-results/

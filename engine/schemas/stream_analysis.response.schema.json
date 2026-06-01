@@ -1,0 +1,1229 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "StreamAnalysisResult",
+  "description": "Result of `analyze_stream`, shaped for the frontend round-trip protocol.\n\nSerialises to: ```json { \"version\": \"1.1\", \"annotations\": { \"tok-001\": { \"rhymeGroup\": \"A\", ... } }, \"clusters\": [ ... ] } ```",
+  "type": "object",
+  "required": [
+    "analyzer",
+    "annotations",
+    "clusters",
+    "echo",
+    "molstar",
+    "pauses",
+    "phonemes",
+    "responseSchema",
+    "rhythm",
+    "structurality",
+    "version"
+  ],
+  "properties": {
+    "analyzer": {
+      "description": "Analyzer name and version.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AnalyzerInfo"
+        }
+      ]
+    },
+    "annotations": {
+      "description": "Per-word annotations keyed by word `id`.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/WordAnnotation"
+      }
+    },
+    "clusters": {
+      "description": "Sound clusters detected across the full stream.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Cluster"
+      }
+    },
+    "echo": {
+      "description": "Per-phoneme echo opacity annotations.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EchoAnnotation"
+      }
+    },
+    "molstar": {
+      "description": "IPA analysis transcribed as amino-acid-like chain for Mol* rendering.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/MolstarTranscription"
+        }
+      ]
+    },
+    "pauses": {
+      "description": "Prosodic pauses created by punctuation and/or line breaks.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PauseAnnotation"
+      }
+    },
+    "phonemes": {
+      "description": "Fully expanded per-phoneme payload sorted by flat index.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/PhonemeLayer"
+        }
+      ]
+    },
+    "responseSchema": {
+      "description": "Response schema descriptor for contract-aware consumers.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ResponseSchemaInfo"
+        }
+      ]
+    },
+    "rhythm": {
+      "description": "Per-line rhythm analysis (stress pattern, clausula, confidence).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LineRhythm"
+      }
+    },
+    "structurality": {
+      "description": "Cross-plane structural complexity report normalised to [0, 1].",
+      "allOf": [
+        {
+          "$ref": "#/definitions/StructuralityAnalysis"
+        }
+      ]
+    },
+    "version": {
+      "description": "IPA Stream format version this result was produced from.",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "AnalyzerInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "Clausula": {
+      "description": "How the line ends relative to its last stressed syllable.",
+      "oneOf": [
+        {
+          "description": "Last stress on the final syllable.",
+          "type": "string",
+          "enum": [
+            "masculine"
+          ]
+        },
+        {
+          "description": "Last stress on the penultimate syllable.",
+          "type": "string",
+          "enum": [
+            "feminine"
+          ]
+        },
+        {
+          "description": "Last stress on the antepenultimate syllable.",
+          "type": "string",
+          "enum": [
+            "dactylic"
+          ]
+        },
+        {
+          "description": "Last stress four or more syllables from the end.",
+          "type": "string",
+          "enum": [
+            "hyperdactylic"
+          ]
+        }
+      ]
+    },
+    "Cluster": {
+      "type": "object",
+      "required": [
+        "end",
+        "kind",
+        "peak",
+        "start"
+      ],
+      "properties": {
+        "end": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        },
+        "peak": {
+          "type": "number",
+          "format": "float"
+        },
+        "start": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "DeviationType": {
+      "description": "How a syllable's actual stress relates to the detected metre.",
+      "oneOf": [
+        {
+          "description": "Actual and expected stress agree.",
+          "type": "string",
+          "enum": [
+            "match"
+          ]
+        },
+        {
+          "description": "Expected stressed position was unstressed (skipped stress).",
+          "type": "string",
+          "enum": [
+            "pyrrhic"
+          ]
+        },
+        {
+          "description": "Unexpected stress on a weak position.",
+          "type": "string",
+          "enum": [
+            "spondee"
+          ]
+        }
+      ]
+    },
+    "EchoAnnotation": {
+      "description": "Echo annotation for one phoneme.",
+      "type": "object",
+      "required": [
+        "gap",
+        "opacity",
+        "source"
+      ],
+      "properties": {
+        "gap": {
+          "description": "Gap in phoneme-units to the nearest match (stream length when no match).",
+          "type": "number",
+          "format": "float"
+        },
+        "nearestMatch": {
+          "description": "`flat_index` of the nearest similar phoneme, or `null` if none found.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "opacity": {
+          "description": "Visual opacity in `[alpha_min, 1.0]`.",
+          "type": "number",
+          "format": "float"
+        },
+        "source": {
+          "description": "Identifies the phoneme in the original document.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PhonemeRef"
+            }
+          ]
+        }
+      }
+    },
+    "LineRhythm": {
+      "description": "Full rhythm analysis result for one confirmed line.\n\nSerialises with camelCase field names for the round-trip protocol.",
+      "type": "object",
+      "required": [
+        "clausula",
+        "confidence",
+        "lineIndex",
+        "period",
+        "phase",
+        "syllableCount",
+        "syllables"
+      ],
+      "properties": {
+        "clausula": {
+          "description": "Clausula type (how the line ends).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Clausula"
+            }
+          ]
+        },
+        "confidence": {
+          "description": "Regularity score [0, 1]; 1.0 = every syllable matches the pattern.",
+          "type": "number",
+          "format": "float"
+        },
+        "lineIndex": {
+          "description": "0-based index of the confirmed line in the poem.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "period": {
+          "description": "Dominant metre period: `2` (binary) or `3` (ternary).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "phase": {
+          "description": "Phase offset: the position within the period where stress is expected.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "syllableCount": {
+          "description": "Total syllable count across all words in the line.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "syllables": {
+          "description": "Per-syllable annotations in line order (all syllables, including unstressed).",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SyllableAnnotation"
+          }
+        }
+      }
+    },
+    "MolstarBiophysicalModel": {
+      "type": "object",
+      "required": [
+        "backboneStep",
+        "contactEnergyUnit",
+        "distanceUnit",
+        "equations",
+        "modelName",
+        "pausePatternMinRepeat",
+        "similarityContactCutoff"
+      ],
+      "properties": {
+        "backboneStep": {
+          "type": "number",
+          "format": "float"
+        },
+        "contactEnergyUnit": {
+          "type": "string"
+        },
+        "distanceUnit": {
+          "type": "string"
+        },
+        "equations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modelName": {
+          "type": "string"
+        },
+        "pausePatternMinRepeat": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "similarityContactCutoff": {
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "MolstarContact": {
+      "type": "object",
+      "required": [
+        "decayLength",
+        "energy",
+        "equilibriumDistance",
+        "fromResidueIndex",
+        "kind",
+        "note",
+        "springConstant",
+        "strength",
+        "toResidueIndex"
+      ],
+      "properties": {
+        "decayLength": {
+          "type": "number",
+          "format": "float"
+        },
+        "energy": {
+          "type": "number",
+          "format": "float"
+        },
+        "equilibriumDistance": {
+          "type": "number",
+          "format": "float"
+        },
+        "fromResidueIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/MolstarContactKind"
+        },
+        "note": {
+          "type": "string"
+        },
+        "springConstant": {
+          "type": "number",
+          "format": "float"
+        },
+        "strength": {
+          "type": "number",
+          "format": "float"
+        },
+        "toResidueIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MolstarContactKind": {
+      "type": "string",
+      "enum": [
+        "similarity_weak",
+        "rhyme_strong",
+        "pause_pattern"
+      ]
+    },
+    "MolstarResidueMapItem": {
+      "type": "object",
+      "required": [
+        "aminoAcid",
+        "aminoAcidName",
+        "language",
+        "lineIndex",
+        "originalWord",
+        "residueIndex",
+        "source",
+        "syllableGrapheme",
+        "syllableIpa",
+        "symbol",
+        "wordIndex"
+      ],
+      "properties": {
+        "aminoAcid": {
+          "type": "string",
+          "maxLength": 1,
+          "minLength": 1
+        },
+        "aminoAcidName": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "lineIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "originalWord": {
+          "type": "string"
+        },
+        "residueIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "source": {
+          "$ref": "#/definitions/PhonemeRef"
+        },
+        "syllableGrapheme": {
+          "type": "string"
+        },
+        "syllableIpa": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "wordIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MolstarSecondaryElement": {
+      "type": "object",
+      "required": [
+        "endResidueIndex",
+        "kind",
+        "note",
+        "startResidueIndex"
+      ],
+      "properties": {
+        "endResidueIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "startResidueIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MolstarTranscription": {
+      "type": "object",
+      "required": [
+        "biophysicalModel",
+        "chainId",
+        "contacts",
+        "fasta",
+        "formatVersion",
+        "interpretation",
+        "ipaLines",
+        "originalLines",
+        "pdb",
+        "residueMap",
+        "secondaryStructure",
+        "sequence",
+        "wordSpans"
+      ],
+      "properties": {
+        "biophysicalModel": {
+          "$ref": "#/definitions/MolstarBiophysicalModel"
+        },
+        "chainId": {
+          "type": "string",
+          "maxLength": 1,
+          "minLength": 1
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MolstarContact"
+          }
+        },
+        "fasta": {
+          "type": "string"
+        },
+        "formatVersion": {
+          "type": "string"
+        },
+        "interpretation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ipaLines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "originalLines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pdb": {
+          "type": "string"
+        },
+        "residueMap": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MolstarResidueMapItem"
+          }
+        },
+        "secondaryStructure": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MolstarSecondaryElement"
+          }
+        },
+        "sequence": {
+          "type": "string"
+        },
+        "wordSpans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MolstarWordSpan"
+          }
+        }
+      }
+    },
+    "MolstarWordSpan": {
+      "type": "object",
+      "required": [
+        "ipaWord",
+        "language",
+        "lineIndex",
+        "originalWord",
+        "residueEnd",
+        "residueStart",
+        "wordId",
+        "wordIndex"
+      ],
+      "properties": {
+        "ipaWord": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "lineIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "originalWord": {
+          "type": "string"
+        },
+        "residueEnd": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "residueStart": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "wordId": {
+          "type": "string"
+        },
+        "wordIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "PauseAnnotation": {
+      "description": "A prosodic pause detected in the stream.",
+      "type": "object",
+      "required": [
+        "afterWordId",
+        "hasLineBreak",
+        "strength"
+      ],
+      "properties": {
+        "afterWordId": {
+          "description": "The `id` of the word immediately before this pause.",
+          "type": "string"
+        },
+        "hasLineBreak": {
+          "description": "Whether a line break immediately follows the punctuation (or the word).",
+          "type": "boolean"
+        },
+        "punctuation": {
+          "description": "The punctuation character(s) that precede the pause, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "strength": {
+          "description": "Normalised pause strength in `[0.0, 1.0]`.",
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "PhonemeClusterContribution": {
+      "type": "object",
+      "required": [
+        "kind",
+        "peak"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "peak": {
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "PhonemeComputedMetrics": {
+      "type": "object",
+      "required": [
+        "clusterContributions",
+        "clusterMembershipCount",
+        "clusterPeakMax",
+        "echoGap",
+        "echoOpacity",
+        "isStressedSyllable",
+        "lineIndex",
+        "stressWeight",
+        "wordIndex"
+      ],
+      "properties": {
+        "clusterContributions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PhonemeClusterContribution"
+          }
+        },
+        "clusterMembershipCount": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "clusterPeakMax": {
+          "type": "number",
+          "format": "float"
+        },
+        "echoGap": {
+          "type": "number",
+          "format": "float"
+        },
+        "echoOpacity": {
+          "type": "number",
+          "format": "float"
+        },
+        "isStressedSyllable": {
+          "type": "boolean"
+        },
+        "lineIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "nearestMatchFlatIndex": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "rhymeGroup": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stressWeight": {
+          "type": "number",
+          "format": "float"
+        },
+        "structuralRhymeGroup": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "wordIndex": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "PhonemeFeatureEncoding": {
+      "type": "object",
+      "required": [
+        "negative",
+        "positive",
+        "unspecified"
+      ],
+      "properties": {
+        "negative": {
+          "type": "string"
+        },
+        "positive": {
+          "type": "string"
+        },
+        "unspecified": {
+          "type": "string"
+        }
+      }
+    },
+    "PhonemeFeatureSchemaItem": {
+      "type": "object",
+      "required": [
+        "description",
+        "key"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        }
+      }
+    },
+    "PhonemeFeatureValue": {
+      "type": "object",
+      "required": [
+        "description",
+        "key",
+        "sign",
+        "value"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "sign": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "PhonemeLayer": {
+      "type": "object",
+      "required": [
+        "entries",
+        "featureSchema",
+        "sortedBy",
+        "total",
+        "valueEncoding"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PhonemeRecord"
+          }
+        },
+        "featureSchema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PhonemeFeatureSchemaItem"
+          }
+        },
+        "sortedBy": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "valueEncoding": {
+          "$ref": "#/definitions/PhonemeFeatureEncoding"
+        }
+      }
+    },
+    "PhonemeNaturalProfile": {
+      "type": "object",
+      "required": [
+        "backness",
+        "classHint",
+        "consonantality",
+        "coronality",
+        "highness",
+        "labiality",
+        "laterality",
+        "lengthness",
+        "nasality",
+        "openness",
+        "roundedness",
+        "sonority",
+        "stridency",
+        "tenseness",
+        "toneHeight",
+        "voicing",
+        "vowelness"
+      ],
+      "properties": {
+        "backness": {
+          "type": "number",
+          "format": "float"
+        },
+        "classHint": {
+          "type": "string"
+        },
+        "consonantality": {
+          "type": "number",
+          "format": "float"
+        },
+        "coronality": {
+          "type": "number",
+          "format": "float"
+        },
+        "highness": {
+          "type": "number",
+          "format": "float"
+        },
+        "labiality": {
+          "type": "number",
+          "format": "float"
+        },
+        "laterality": {
+          "type": "number",
+          "format": "float"
+        },
+        "lengthness": {
+          "type": "number",
+          "format": "float"
+        },
+        "nasality": {
+          "type": "number",
+          "format": "float"
+        },
+        "openness": {
+          "type": "number",
+          "format": "float"
+        },
+        "roundedness": {
+          "type": "number",
+          "format": "float"
+        },
+        "sonority": {
+          "type": "number",
+          "format": "float"
+        },
+        "stridency": {
+          "type": "number",
+          "format": "float"
+        },
+        "tenseness": {
+          "type": "number",
+          "format": "float"
+        },
+        "toneHeight": {
+          "type": "number",
+          "format": "float"
+        },
+        "voicing": {
+          "type": "number",
+          "format": "float"
+        },
+        "vowelness": {
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "PhonemeRecord": {
+      "type": "object",
+      "required": [
+        "computedMetrics",
+        "features",
+        "naturalProfile",
+        "source",
+        "symbol",
+        "vector"
+      ],
+      "properties": {
+        "computedMetrics": {
+          "$ref": "#/definitions/PhonemeComputedMetrics"
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PhonemeFeatureValue"
+          }
+        },
+        "naturalProfile": {
+          "$ref": "#/definitions/PhonemeNaturalProfile"
+        },
+        "source": {
+          "$ref": "#/definitions/PhonemeRef"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "vector": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          }
+        }
+      }
+    },
+    "PhonemeRef": {
+      "description": "Stable reference to one phoneme; the frontend uses this as a lookup key.",
+      "type": "object",
+      "required": [
+        "flatIndex",
+        "phonemeIndex",
+        "syllableIndex",
+        "wordId"
+      ],
+      "properties": {
+        "flatIndex": {
+          "description": "Position in the flat phoneme-only stream (0-based).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "phonemeIndex": {
+          "description": "0-based phoneme index within the syllable's `tokens` array.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "syllableIndex": {
+          "description": "0-based syllable index within the word.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "wordId": {
+          "description": "Stable token ID of the containing word.",
+          "type": "string"
+        }
+      }
+    },
+    "ResponseSchemaInfo": {
+      "type": "object",
+      "required": [
+        "dialect",
+        "file",
+        "name",
+        "version"
+      ],
+      "properties": {
+        "dialect": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "StructuralityAnalysis": {
+      "type": "object",
+      "required": [
+        "crossLevelCoupling",
+        "global",
+        "interdependencyModel",
+        "localPhonemePatterning",
+        "pausePatterning",
+        "rhythm",
+        "soundSequencePatterning",
+        "weights"
+      ],
+      "properties": {
+        "crossLevelCoupling": {
+          "$ref": "#/definitions/StructuralityComponent"
+        },
+        "global": {
+          "type": "number",
+          "format": "float"
+        },
+        "interdependencyModel": {
+          "type": "string"
+        },
+        "localPhonemePatterning": {
+          "$ref": "#/definitions/StructuralityComponent"
+        },
+        "pausePatterning": {
+          "$ref": "#/definitions/StructuralityComponent"
+        },
+        "rhythm": {
+          "$ref": "#/definitions/StructuralityComponent"
+        },
+        "soundSequencePatterning": {
+          "$ref": "#/definitions/StructuralityComponent"
+        },
+        "weights": {
+          "$ref": "#/definitions/StructuralityWeights"
+        }
+      }
+    },
+    "StructuralityComponent": {
+      "type": "object",
+      "required": [
+        "baseline",
+        "rawSignal",
+        "score"
+      ],
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "float"
+        },
+        "rawSignal": {
+          "type": "number",
+          "format": "float"
+        },
+        "score": {
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "StructuralityWeights": {
+      "type": "object",
+      "required": [
+        "crossLevelCoupling",
+        "localPhonemePatterning",
+        "pausePatterning",
+        "rhythm",
+        "soundSequencePatterning"
+      ],
+      "properties": {
+        "crossLevelCoupling": {
+          "type": "number",
+          "format": "float"
+        },
+        "localPhonemePatterning": {
+          "type": "number",
+          "format": "float"
+        },
+        "pausePatterning": {
+          "type": "number",
+          "format": "float"
+        },
+        "rhythm": {
+          "type": "number",
+          "format": "float"
+        },
+        "soundSequencePatterning": {
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "SyllableAnnotation": {
+      "description": "Stress annotation for one syllable.",
+      "type": "object",
+      "required": [
+        "deviation",
+        "expected",
+        "stress",
+        "syllableRef"
+      ],
+      "properties": {
+        "deviation": {
+          "description": "Classification relative to the metre.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeviationType"
+            }
+          ]
+        },
+        "expected": {
+          "description": "Expected stress under the detected metre.",
+          "type": "number",
+          "format": "float"
+        },
+        "stress": {
+          "description": "Actual stress value: `1.0` = stressed, `0.0` = unstressed.",
+          "type": "number",
+          "format": "float"
+        },
+        "syllableRef": {
+          "description": "Identifies the syllable for frontend mapping.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SyllableRef"
+            }
+          ]
+        }
+      }
+    },
+    "SyllableRef": {
+      "description": "Stable reference to one syllable; the frontend uses this as a lookup key.",
+      "type": "object",
+      "required": [
+        "linePosition",
+        "syllableIndex",
+        "wordId"
+      ],
+      "properties": {
+        "linePosition": {
+          "description": "0-based position of this syllable within the line's flat syllable sequence.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "syllableIndex": {
+          "description": "0-based index of this syllable within the word.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "wordId": {
+          "description": "Stable token ID of the containing word (from IPA Stream `id` field).",
+          "type": "string"
+        }
+      }
+    },
+    "WordAnnotation": {
+      "description": "Per-word annotation keyed by `id` from the input stream.",
+      "type": "object",
+      "required": [
+        "lineIndex",
+        "stressConfidence",
+        "wordIndex"
+      ],
+      "properties": {
+        "lineIndex": {
+          "description": "Line index of this word (0-based), mirrors `IpaStreamWord.line_index`.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "rhymeGroup": {
+          "description": "Rhyme group letter (A, B, C, …) or `null` if not detected.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rhymeScore": {
+          "description": "DTW similarity score against the best-matching rhyme partner [0, 1].",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float"
+        },
+        "stressConfidence": {
+          "description": "Confidence in the stress assignment (derived from `stressSource`).",
+          "type": "number",
+          "format": "float"
+        },
+        "structuralRhymeGroup": {
+          "description": "Structural rhyme group (shared syllabic shape), or `null` if unique.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "wordIndex": {
+          "description": "Word index within its line (0-based), mirrors `IpaStreamWord.word_index`.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    }
+  }
+}
