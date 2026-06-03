@@ -151,6 +151,10 @@ export interface StreamAnalysisResult {
    */
   responseSchema: ResponseSchemaInfo;
   /**
+   * Connected rhyme groups derived from `rhyme_pairs` (can be larger than pairs).
+   */
+  rhyme_groups: RhymeGroup[];
+  /**
    * All detected rhyme pairs with similarity scores (flexible grouping).
    */
   rhyme_pairs: RhymePair[];
@@ -433,6 +437,40 @@ export interface ResponseSchemaInfo {
   file: string;
   name: string;
   version: string;
+  [k: string]: any | undefined;
+}
+/**
+ * Connected rhyme component that can contain 2+ words.
+ */
+export interface RhymeGroup {
+  /**
+   * Mean DTW similarity across group's pair edges.
+   */
+  averageSimilarity: number;
+  /**
+   * Mean weighted score across group's pair edges.
+   */
+  averageWeightedScore: number;
+  /**
+   * Rhyme group letter (A, B, C, ...).
+   */
+  groupId: string;
+  /**
+   * Maximum DTW similarity across group's pair edges.
+   */
+  maxSimilarity: number;
+  /**
+   * Maximum weighted score across group's pair edges.
+   */
+  maxWeightedScore: number;
+  /**
+   * Number of rhyme pair edges inside this connected group.
+   */
+  pairCount: number;
+  /**
+   * Word IDs that belong to this rhyme group.
+   */
+  wordIds: string[];
   [k: string]: any | undefined;
 }
 /**

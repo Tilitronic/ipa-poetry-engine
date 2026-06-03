@@ -13,6 +13,7 @@
     "pauses",
     "phonemes",
     "responseSchema",
+    "rhyme_groups",
     "rhyme_pairs",
     "rhythm",
     "structurality",
@@ -85,6 +86,13 @@
           "$ref": "#/definitions/ResponseSchemaInfo"
         }
       ]
+    },
+    "rhyme_groups": {
+      "description": "Connected rhyme groups derived from `rhyme_pairs` (can be larger than pairs).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RhymeGroup"
+      }
     },
     "rhyme_pairs": {
       "description": "All detected rhyme pairs with similarity scores (flexible grouping).",
@@ -1052,6 +1060,58 @@
         },
         "version": {
           "type": "string"
+        }
+      }
+    },
+    "RhymeGroup": {
+      "description": "Connected rhyme component that can contain 2+ words.",
+      "type": "object",
+      "required": [
+        "averageSimilarity",
+        "averageWeightedScore",
+        "groupId",
+        "maxSimilarity",
+        "maxWeightedScore",
+        "pairCount",
+        "wordIds"
+      ],
+      "properties": {
+        "averageSimilarity": {
+          "description": "Mean DTW similarity across group's pair edges.",
+          "type": "number",
+          "format": "float"
+        },
+        "averageWeightedScore": {
+          "description": "Mean weighted score across group's pair edges.",
+          "type": "number",
+          "format": "float"
+        },
+        "groupId": {
+          "description": "Rhyme group letter (A, B, C, ...).",
+          "type": "string"
+        },
+        "maxSimilarity": {
+          "description": "Maximum DTW similarity across group's pair edges.",
+          "type": "number",
+          "format": "float"
+        },
+        "maxWeightedScore": {
+          "description": "Maximum weighted score across group's pair edges.",
+          "type": "number",
+          "format": "float"
+        },
+        "pairCount": {
+          "description": "Number of rhyme pair edges inside this connected group.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "wordIds": {
+          "description": "Word IDs that belong to this rhyme group.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

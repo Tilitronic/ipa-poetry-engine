@@ -1,7 +1,7 @@
 {
   "name": "phonetic-poetry-engine-contract",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Contract generation for IPA stream request/response schemas and TypeScript types",
   "scripts": {
     "schema:export": "cargo run -p core --bin export_schemas --",

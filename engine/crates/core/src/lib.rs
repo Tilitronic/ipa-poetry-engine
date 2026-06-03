@@ -231,6 +231,26 @@ pub struct RhymePair {
     pub strength_tier: String,
 }
 
+/// Connected rhyme component that can contain 2+ words.
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RhymeGroup {
+    /// Rhyme group letter (A, B, C, ...).
+    pub group_id: String,
+    /// Word IDs that belong to this rhyme group.
+    pub word_ids: Vec<String>,
+    /// Number of rhyme pair edges inside this connected group.
+    pub pair_count: usize,
+    /// Mean DTW similarity across group's pair edges.
+    pub average_similarity: f32,
+    /// Maximum DTW similarity across group's pair edges.
+    pub max_similarity: f32,
+    /// Mean weighted score across group's pair edges.
+    pub average_weighted_score: f32,
+    /// Maximum weighted score across group's pair edges.
+    pub max_weighted_score: f32,
+}
+
 /// Per-word annotation keyed by `id` from the input stream.
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -478,6 +498,8 @@ pub struct StreamAnalysisResult {
     pub annotations: HashMap<String, WordAnnotation>,
     /// All detected rhyme pairs with similarity scores (flexible grouping).
     pub rhyme_pairs: Vec<RhymePair>,
+    /// Connected rhyme groups derived from `rhyme_pairs` (can be larger than pairs).
+    pub rhyme_groups: Vec<RhymeGroup>,
     /// Sound clusters detected across the full stream.
     pub clusters: Vec<Cluster>,
     /// Per-line rhythm analysis (stress pattern, clausula, confidence).
@@ -510,6 +532,24 @@ fn metric_glossary() -> Vec<MetricGlossaryEntry> {
             source: "rhyme_pairs[]",
             description: "Similarity weighted by match length: similarity * sqrt(matchLength).",
             interpretation: "Ranks longer and cleaner matches above short accidental matches.",
+        },
+        MetricGlossaryEntry {
+            id: "rhyme_groups.average_similarity",
+            source: "rhyme_groups[]",
+            description: "Mean DTW similarity of all pair edges within one rhyme group.",
+            interpretation: "Higher means group members are consistently similar, not just linked by one weak bridge.",
+        },
+        MetricGlossaryEntry {
+            id: "rhyme_groups.max_similarity",
+            source: "rhyme_groups[]",
+            description: "Maximum DTW similarity among pair edges inside a rhyme group.",
+            interpretation: "Use to find each group's strongest anchor rhyme.",
+        },
+        MetricGlossaryEntry {
+            id: "rhyme_groups.average_weighted_score",
+            source: "rhyme_groups[]",
+            description: "Mean weighted score (similarity * sqrt(matchLength)) across group edges.",
+            interpretation: "Balances phonetic similarity with match length for stable ranking.",
         },
         MetricGlossaryEntry {
             id: "annotations.rhymeScore",
@@ -548,6 +588,161 @@ fn metric_glossary() -> Vec<MetricGlossaryEntry> {
             interpretation: "Higher means richer cross-level organisation across rhythm, rhyme and pause planes.",
         },
     ]
+}
+
+#[derive(Debug)]
+struct UnionFind {
+    parent: Vec<usize>,
+    rank: Vec<u8>,
+}
+
+impl UnionFind {
+    fn new(size: usize) -> Self {
+        Self {
+            parent: (0..size).collect(),
+            rank: vec![0; size],
+        }
+    }
+
+    fn find(&mut self, x: usize) -> usize {
+        if self.parent[x] != x {
+            let root = self.find(self.parent[x]);
+            self.parent[x] = root;
+        }
+        self.parent[x]
+    }
+
+    fn union(&mut self, a: usize, b: usize) {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra == rb {
+            return;
+        }
+
+        if self.rank[ra] < self.rank[rb] {
+            self.parent[ra] = rb;
+        } else if self.rank[ra] > self.rank[rb] {
+            self.parent[rb] = ra;
+        } else {
+            self.parent[rb] = ra;
+            self.rank[ra] = self.rank[ra].saturating_add(1);
+        }
+    }
+}
+
+fn compute_rhyme_grouping(
+    all_words: &[&stream::IpaStreamWord],
+    rhyme_pairs: &[RhymePair],
+) -> (Vec<Option<String>>, Vec<f32>, Vec<RhymeGroup>) {
+    let n = all_words.len();
+    let mut best_score: Vec<f32> = vec![0.0; n];
+    let mut involved: Vec<bool> = vec![false; n];
+
+    // Build index: word_id -> word_index
+    let word_id_to_idx: HashMap<&str, usize> = all_words
+        .iter()
+        .enumerate()
+        .map(|(idx, w)| (w.id.as_str(), idx))
+        .collect();
+
+    let mut uf = UnionFind::new(n);
+
+    for pair in rhyme_pairs {
+        let i = word_id_to_idx.get(pair.word_id_a.as_str()).copied();
+        let j = word_id_to_idx.get(pair.word_id_b.as_str()).copied();
+
+        if let (Some(i), Some(j)) = (i, j) {
+            involved[i] = true;
+            involved[j] = true;
+
+            if pair.similarity > best_score[i] {
+                best_score[i] = pair.similarity;
+            }
+            if pair.similarity > best_score[j] {
+                best_score[j] = pair.similarity;
+            }
+
+            uf.union(i, j);
+        }
+    }
+
+    let mut root_to_group: HashMap<usize, String> = HashMap::new();
+    let mut group_of: Vec<Option<String>> = vec![None; n];
+    let mut group_counter: u8 = b'A';
+
+    for idx in 0..n {
+        if !involved[idx] {
+            continue;
+        }
+
+        let root = uf.find(idx);
+        let group = root_to_group.entry(root).or_insert_with(|| {
+            let letter = (group_counter as char).to_string();
+            group_counter = group_counter.saturating_add(1);
+            letter
+        });
+        group_of[idx] = Some(group.clone());
+    }
+
+    #[derive(Default)]
+    struct GroupStats {
+        pair_count: usize,
+        similarity_sum: f32,
+        similarity_max: f32,
+        weighted_sum: f32,
+        weighted_max: f32,
+    }
+
+    let mut stats_by_group: HashMap<String, GroupStats> = HashMap::new();
+    for pair in rhyme_pairs {
+        let i = word_id_to_idx.get(pair.word_id_a.as_str()).copied();
+        let j = word_id_to_idx.get(pair.word_id_b.as_str()).copied();
+        if let (Some(i), Some(j)) = (i, j) {
+            let gi = group_of[i].as_ref();
+            let gj = group_of[j].as_ref();
+            if let (Some(gi), Some(gj)) = (gi, gj) {
+                if gi == gj {
+                    let stats = stats_by_group.entry(gi.clone()).or_default();
+                    stats.pair_count += 1;
+                    stats.similarity_sum += pair.similarity;
+                    stats.similarity_max = stats.similarity_max.max(pair.similarity);
+                    stats.weighted_sum += pair.weighted_score;
+                    stats.weighted_max = stats.weighted_max.max(pair.weighted_score);
+                }
+            }
+        }
+    }
+
+    let mut grouped_word_ids: HashMap<String, Vec<String>> = HashMap::new();
+    for (idx, maybe_group) in group_of.iter().enumerate() {
+        if let Some(group) = maybe_group {
+            grouped_word_ids
+                .entry(group.clone())
+                .or_default()
+                .push(all_words[idx].id.clone());
+        }
+    }
+
+    let mut rhyme_groups: Vec<RhymeGroup> = grouped_word_ids
+        .into_iter()
+        .map(|(group_id, mut word_ids)| {
+            word_ids.sort();
+            let stats = stats_by_group.remove(&group_id).unwrap_or_default();
+            let denom = if stats.pair_count == 0 { 1.0 } else { stats.pair_count as f32 };
+            RhymeGroup {
+                group_id,
+                word_ids,
+                pair_count: stats.pair_count,
+                average_similarity: stats.similarity_sum / denom,
+                max_similarity: stats.similarity_max,
+                average_weighted_score: stats.weighted_sum / denom,
+                max_weighted_score: stats.weighted_max,
+            }
+        })
+        .collect();
+    rhyme_groups.sort_by(|a, b| a.group_id.cmp(&b.group_id));
+
+    (group_of, best_score, rhyme_groups)
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -718,7 +913,7 @@ struct FlatPhonemeContext {
 const ANALYZER_NAME: &str = "phonetic-poetry-engine";
 const ANALYZER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RESPONSE_SCHEMA_NAME: &str = "StreamAnalysisResult";
-const RESPONSE_SCHEMA_VERSION: &str = "1.0";
+const RESPONSE_SCHEMA_VERSION: &str = "1.1";
 const RESPONSE_SCHEMA_DIALECT: &str = "http://json-schema.org/draft-07/schema#";
 const RESPONSE_SCHEMA_FILE: &str = "stream_analysis.response.schema.json";
 
@@ -882,50 +1077,9 @@ pub fn analyze_stream(
     // - Variable-length rhymes (кар-то ↔ кр-то)
     let rhyme_pairs_output = find_ngram_rhyme_matches(&flat_tokens, &flat_context, &all_words);
 
-    // ── Greedy rhyme group assignment from n-gram pairs ──────────────────
-    let n = all_words.len();
-    let mut group_of: Vec<Option<String>> = vec![None; n];
-    let mut group_counter: u8 = b'A';
-    let mut best_score: Vec<f32> = vec![0.0; n];
-
-    // Build index: word_id → word_index
-    let word_id_to_idx: std::collections::HashMap<&str, usize> = all_words
-        .iter()
-        .enumerate()
-        .map(|(idx, w)| (w.id.as_str(), idx))
-        .collect();
-
-    for pair in &rhyme_pairs_output {
-        let i = word_id_to_idx.get(pair.word_id_a.as_str()).copied();
-        let j = word_id_to_idx.get(pair.word_id_b.as_str()).copied();
-
-        if let (Some(i), Some(j)) = (i, j) {
-            // Update best scores
-            if pair.similarity > best_score[i] {
-                best_score[i] = pair.similarity;
-            }
-            if pair.similarity > best_score[j] {
-                best_score[j] = pair.similarity;
-            }
-
-            // Greedy group assignment
-            match (group_of[i].clone(), group_of[j].clone()) {
-                (None, None) => {
-                    let letter = (group_counter as char).to_string();
-                    group_counter = group_counter.saturating_add(1);
-                    group_of[i] = Some(letter.clone());
-                    group_of[j] = Some(letter);
-                }
-                (Some(g), None) => {
-                    group_of[j] = Some(g);
-                }
-                (None, Some(g)) => {
-                    group_of[i] = Some(g);
-                }
-                (Some(_), Some(_)) => {} // Both already grouped
-            }
-        }
-    }
+    // ── Rhyme grouping from connected components over pair graph ─────────
+    let (group_of, best_score, rhyme_groups_output) =
+        compute_rhyme_grouping(&all_words, &rhyme_pairs_output);
 
 
     // ── Build annotation map for ALL words ───────────────────────────────
@@ -1488,6 +1642,7 @@ pub fn analyze_stream(
         },
         annotations,
         rhyme_pairs: rhyme_pairs_output,
+        rhyme_groups: rhyme_groups_output,
         clusters,
         rhythm,
         echo,
@@ -1805,6 +1960,73 @@ mod stream_integration_tests {
         assert!(max_length >= 2, "n-gram match should be at least 2 phonemes (got {})", max_length);
     }
 
+    #[test]
+    fn test_rhyme_grouping_merges_connected_pairs() {
+        let words = vec![
+            stream::IpaStreamWord {
+                id: "w1".to_string(),
+                line_index: 0,
+                word_index: 0,
+                language: "uk".to_string(),
+                original: "w1".to_string(),
+                syllable_count: 1,
+                stressed_syllable: 0,
+                stress_source: stream::StressSource::Ml,
+                syllables: Vec::new(),
+            },
+            stream::IpaStreamWord {
+                id: "w2".to_string(),
+                line_index: 0,
+                word_index: 1,
+                language: "uk".to_string(),
+                original: "w2".to_string(),
+                syllable_count: 1,
+                stressed_syllable: 0,
+                stress_source: stream::StressSource::Ml,
+                syllables: Vec::new(),
+            },
+            stream::IpaStreamWord {
+                id: "w3".to_string(),
+                line_index: 0,
+                word_index: 2,
+                language: "uk".to_string(),
+                original: "w3".to_string(),
+                syllable_count: 1,
+                stressed_syllable: 0,
+                stress_source: stream::StressSource::Ml,
+                syllables: Vec::new(),
+            },
+        ];
+
+        let make_pair = |a: &str, b: &str| RhymePair {
+            word_id_a: a.to_string(),
+            word_id_b: b.to_string(),
+            similarity: 0.8,
+            match_length: 3,
+            position_a: 0,
+            position_b: 0,
+            sequence_a: vec!["a".to_string()],
+            sequence_b: vec!["a".to_string()],
+            weighted_score: 0.8,
+            strength_tier: "strong".to_string(),
+        };
+
+        // Chain graph: w1-w2 and w2-w3 must produce one 3-word rhyme group.
+        let pairs = vec![make_pair("w1", "w2"), make_pair("w2", "w3")];
+        let word_refs: Vec<&stream::IpaStreamWord> = words.iter().collect();
+        let (group_of, _best, groups) = compute_rhyme_grouping(&word_refs, &pairs);
+
+        assert_eq!(group_of[0], group_of[1]);
+        assert_eq!(group_of[1], group_of[2]);
+        assert_eq!(groups.len(), 1, "expected one connected rhyme group");
+        assert_eq!(groups[0].word_ids.len(), 3, "group should contain 3 words");
+        assert_eq!(groups[0].pair_count, 2, "group should include both pair edges");
+        assert!((groups[0].average_similarity - 0.8).abs() < 1e-6);
+        assert!((groups[0].max_similarity - 0.8).abs() < 1e-6);
+        assert!((groups[0].average_weighted_score - 0.8).abs() < 1e-6);
+        assert!((groups[0].max_weighted_score - 0.8).abs() < 1e-6);
+    }
+
     // ── WordAnnotation carries position fields ────────────────────────────
 
     #[test]
@@ -1848,6 +2070,7 @@ mod stream_integration_tests {
         assert_eq!(result.analyzer.name, "phonetic-poetry-engine");
         assert_eq!(result.analyzer.version, env!("CARGO_PKG_VERSION"));
         assert_eq!(result.response_schema.name, "StreamAnalysisResult");
+        assert_eq!(result.response_schema.version, "1.1");
         assert_eq!(result.response_schema.file, "stream_analysis.response.schema.json");
     }
 
