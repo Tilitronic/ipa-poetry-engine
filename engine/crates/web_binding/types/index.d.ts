@@ -125,6 +125,31 @@ export interface IpaStream {
 // ── Rhyme & word annotations ─────────────────────────────────────────────
 
 /**
+ * Detected rhyme pair between two words with similarity score.
+ * Returned as an array in StreamAnalysisResult.rhymePairs.
+ *
+ * Use these pairs for flexible client-side grouping:
+ * - Filter by `similarity >= threshold` to adjust rhyme detection sensitivity
+ * - Group by connected components to create custom rhyme schemes
+ * - Color-code by similarity strength for visual rhyme density heatmaps
+ *
+ * Example: "дон" ↔ "зон" might have similarity ~0.6 (60% phoneme match).
+ * You can set threshold at 0.5 to group them, or 0.7 to separate them.
+ */
+export interface RhymePair {
+  /** ID of the first word in the pair (from IpaStreamWord.id). */
+  wordIdA: string;
+  /** ID of the second word in the pair (from IpaStreamWord.id). */
+  wordIdB: string;
+  /** DTW phonetic similarity score [0, 1], higher = stronger rhyme. */
+  similarity: number;
+  /** Length of the coda sequence for word A (number of phonemes). */
+  codaLengthA: number;
+  /** Length of the coda sequence for word B (number of phonemes). */
+  codaLengthB: number;
+}
+
+/**
  * Per-word annotation.
  * Returned as a map keyed by IpaStreamWord.id.
  *
@@ -574,6 +599,18 @@ export interface ResponseSchemaInfo {
   file: string;
 }
 
+/** Short explanation of a numeric metric exposed by the analysis payload. */
+export interface MetricGlossaryEntry {
+  /** Stable metric id, e.g. "rhyme_pairs.similarity". */
+  id: string;
+  /** JSON path-like source location where this metric appears. */
+  source: string;
+  /** What the metric measures. */
+  description: string;
+  /** How to read or use the metric in filtering/grouping UX. */
+  interpretation: string;
+}
+
 // ── Top-level result ──────────────────────────────────────────────────────
 
 /**
@@ -594,6 +631,12 @@ export interface StreamAnalysisResult {
    * Key: IpaStreamWord.id  →  Value: WordAnnotation
    */
   annotations: Record<string, WordAnnotation>;
+  /**
+   * All detected rhyme pairs with similarity scores (flexible grouping).
+   * Use this for client-side threshold tuning and custom rhyme scheme visualization.
+   * Pairs are ordered by descending similarity (strongest rhymes first).
+   */
+  rhyme_pairs: RhymePair[];
   /** Sound clusters detected across the full phoneme stream. */
   clusters: Cluster[];
   /** Per-line rhythm analysis (one entry per confirmed poetic line). */
@@ -608,6 +651,8 @@ export interface StreamAnalysisResult {
   molstar: MolstarTranscription;
   /** Multi-plane structural complexity report. */
   structurality: StructuralityAnalysis;
+  /** Short metric glossary for UI hints and quick interpretation. */
+  metricGlossary: MetricGlossaryEntry[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

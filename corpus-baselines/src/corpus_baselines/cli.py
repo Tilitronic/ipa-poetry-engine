@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 
 from .config import get_default_source_plan, iter_source_labels
+from .metrics import format_analysis_report, run_analysis, save_result
 from .progress import ProgressReporter
 
 
@@ -41,6 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
         default="wikisource",
         help="Poetry corpus source: wikisource (Wikisource pages) or mova (mova.info online corpus reference)",
     )
+
+    p_analyze = sub.add_parser("analyze", help="Analyze prose/poetry corpora and search best thresholds")
+    p_analyze.add_argument("--data-root", type=Path, default=Path("data"), help="Root with poetry/prose corpus files")
+    p_analyze.add_argument("--max-files", type=int, default=25, help="Limit files per group (0 means all)")
+    p_analyze.add_argument("--max-lines", type=int, default=2000, help="Limit lines per file (0 means all)")
+    p_analyze.add_argument("--max-words", type=int, default=50000, help="Limit words per file (0 means all)")
+    p_analyze.add_argument("--output", type=Path, default=Path("data/results/metrics_report.json"), help="JSON output path")
 
     return parser
 
@@ -110,6 +118,26 @@ def command_download(dest: Path, dry_run: bool, exclude_category: list[str], inc
     return 1 if failures else 0
 
 
+def command_analyze(data_root: Path, max_files: int, max_lines: int, max_words: int, output: Path) -> int:
+    reporter = ProgressReporter()
+    reporter.header("Corpus metrics analysis")
+    reporter.status(f"Data root: {data_root}")
+    reporter.status(f"Max files per group: {max_files}")
+    reporter.status(f"Max lines per file: {max_lines}")
+    reporter.status(f"Max words per file: {max_words}")
+
+    result = run_analysis(
+        data_root=data_root,
+        max_files_per_group=max_files,
+        max_lines_per_file=max_lines,
+        max_words_per_file=max_words,
+    )
+    save_result(result, output)
+    reporter.status(format_analysis_report(result))
+    reporter.status(f"\nSaved JSON: {output}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -117,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_plan(args.json)
     if args.command == "download":
         return command_download(args.dest, args.dry_run, args.exclude_category, args.include_group, args.poetry_source)
+    if args.command == "analyze":
+        return command_analyze(args.data_root, args.max_files, args.max_lines, args.max_words, args.output)
 
     return 2
 

@@ -121,6 +121,12 @@ pub struct IpaStream {
 impl IpaStream {
     /// Parse from raw JSON bytes.
     pub fn from_json_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        // Some Windows writers prepend UTF-8 BOM; serde_json rejects it.
+        let bytes = if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+            &bytes[3..]
+        } else {
+            bytes
+        };
         serde_json::from_slice(bytes)
     }
 
@@ -413,6 +419,14 @@ mod tests {
     #[test]
     fn test_invalid_json_returns_error() {
         assert!(IpaStream::from_json_bytes(b"not json").is_err());
+    }
+
+    #[test]
+    fn test_from_json_bytes_accepts_utf8_bom() {
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(spec_example_json().as_bytes());
+        let parsed = IpaStream::from_json_bytes(&bytes);
+        assert!(parsed.is_ok(), "UTF-8 BOM should be tolerated");
     }
 
     // ── lines() ──────────────────────────────────────────────────────────

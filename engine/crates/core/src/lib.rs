@@ -26,7 +26,7 @@ use algorithms::pause::collect_pauses;
 use algorithms::rhythm::analyze_line_rhythm;
 use algorithms::structural::analyze_structural;
 use algorithms::structurality::compute_structurality;
-use stream::{coda_tokens_from_word, stress_confidence, tokens_from_word};
+use stream::{stress_confidence, tokens_from_word};
 use tokenizer::TokenType;
 
 pub use algorithms::echo::{EchoAnnotation, PhonemeRef};
@@ -204,6 +204,32 @@ impl std::error::Error for EngineError {}
 // ────────────────────────────────────────────────────────────────────────────
 // Stream analysis output types (IPA Stream v1.1 round-trip)
 // ────────────────────────────────────────────────────────────────────────────
+
+/// Detected rhyme match between two words with position and strength metadata.
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RhymePair {
+    /// ID of the first word in the pair.
+    pub word_id_a: String,
+    /// ID of the second word in the pair.
+    pub word_id_b: String,
+    /// DTW phonetic similarity score [0, 1], higher = stronger rhyme.
+    pub similarity: f32,
+    /// Length of the best matching phoneme subsequence.
+    pub match_length: usize,
+    /// Start position (phoneme index) of match in word A.
+    pub position_a: usize,
+    /// Start position (phoneme index) of match in word B.
+    pub position_b: usize,
+    /// IPA symbol sequence of the matched region in word A.
+    pub sequence_a: Vec<String>,
+    /// IPA symbol sequence of the matched region in word B.
+    pub sequence_b: Vec<String>,
+    /// Weighted score: similarity × sqrt(match_length).
+    pub weighted_score: f32,
+    /// Strength tier for quick filtering: "strong" | "medium" | "weak".
+    pub strength_tier: String,
+}
 
 /// Per-word annotation keyed by `id` from the input stream.
 #[derive(Debug, Serialize, JsonSchema)]
@@ -420,6 +446,15 @@ pub struct PhonemeLayer {
     pub entries: Vec<PhonemeRecord>,
 }
 
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MetricGlossaryEntry {
+    pub id: &'static str,
+    pub source: &'static str,
+    pub description: &'static str,
+    pub interpretation: &'static str,
+}
+
 /// Result of `analyze_stream`, shaped for the frontend round-trip protocol.
 ///
 /// Serialises to:
@@ -441,6 +476,8 @@ pub struct StreamAnalysisResult {
     pub response_schema: ResponseSchemaInfo,
     /// Per-word annotations keyed by word `id`.
     pub annotations: HashMap<String, WordAnnotation>,
+    /// All detected rhyme pairs with similarity scores (flexible grouping).
+    pub rhyme_pairs: Vec<RhymePair>,
     /// Sound clusters detected across the full stream.
     pub clusters: Vec<Cluster>,
     /// Per-line rhythm analysis (stress pattern, clausula, confidence).
@@ -455,6 +492,62 @@ pub struct StreamAnalysisResult {
     pub molstar: MolstarTranscription,
     /// Cross-plane structural complexity report normalised to [0, 1].
     pub structurality: StructuralityAnalysis,
+    /// Short metric glossary for fast frontend interpretation and UX hints.
+    #[serde(rename = "metricGlossary")]
+    pub metric_glossary: Vec<MetricGlossaryEntry>,
+}
+
+fn metric_glossary() -> Vec<MetricGlossaryEntry> {
+    vec![
+        MetricGlossaryEntry {
+            id: "rhyme_pairs.similarity",
+            source: "rhyme_pairs[]",
+            description: "DTW similarity of two phoneme sequences in [0,1].",
+            interpretation: "Higher means stronger rhyme; useful for threshold filtering.",
+        },
+        MetricGlossaryEntry {
+            id: "rhyme_pairs.weighted_score",
+            source: "rhyme_pairs[]",
+            description: "Similarity weighted by match length: similarity * sqrt(matchLength).",
+            interpretation: "Ranks longer and cleaner matches above short accidental matches.",
+        },
+        MetricGlossaryEntry {
+            id: "annotations.rhymeScore",
+            source: "annotations[wordId]",
+            description: "Best rhyme similarity for a word against any detected partner.",
+            interpretation: "Use for per-word confidence, sorting, or heatmap intensity.",
+        },
+        MetricGlossaryEntry {
+            id: "clusters.peak",
+            source: "clusters[]",
+            description: "Peak density value of the feature-specific sliding window.",
+            interpretation: "Higher means stronger local concentration of that sound class.",
+        },
+        MetricGlossaryEntry {
+            id: "echo.opacity",
+            source: "echo[]",
+            description: "Opacity derived from nearest similar-phoneme distance.",
+            interpretation: "Higher means denser local repetition; lower means isolated sound.",
+        },
+        MetricGlossaryEntry {
+            id: "phonemes.entries[].computedMetrics.stressWeight",
+            source: "phonemes.entries[]",
+            description: "Stress-aware phoneme weight used by downstream scoring.",
+            interpretation: "Higher values indicate stressed or rhythmically salient positions.",
+        },
+        MetricGlossaryEntry {
+            id: "phonemes.entries[].computedMetrics.clusterPeakMax",
+            source: "phonemes.entries[]",
+            description: "Maximum cluster peak among all clusters containing the phoneme.",
+            interpretation: "Useful for filtering phonemes that belong to strong sound patches.",
+        },
+        MetricGlossaryEntry {
+            id: "structurality.score",
+            source: "structurality",
+            description: "Global structural complexity score normalised to [0,1].",
+            interpretation: "Higher means richer cross-level organisation across rhythm, rhyme and pause planes.",
+        },
+    ]
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -462,7 +555,166 @@ pub struct StreamAnalysisResult {
 // ────────────────────────────────────────────────────────────────────────────
 
 /// Minimum DTW similarity score to consider two words as rhyming.
-const RHYME_THRESHOLD: f32 = 0.65;
+/// Lowered to 0.4 to enable flexible frontend grouping (e.g., "дон-зон" ~60%).
+const RHYME_THRESHOLD: f32 = 0.40;
+
+/// Minimum phoneme count in n-gram subsequence to qualify as rhyme candidate.
+const MIN_NGRAM_LENGTH: usize = 2;
+
+/// Maximum phoneme count in n-gram subsequence (performance limit).
+const MAX_NGRAM_LENGTH: usize = 15;
+
+// ────────────────────────────────────────────────────────────────────────────
+// N-gram rhyme matching — find similar phoneme subsequences across full text
+// ────────────────────────────────────────────────────────────────────────────
+
+/// N-gram phoneme subsequence with position metadata.
+#[derive(Debug, Clone)]
+struct PhonemeNGram {
+    /// Start position in flat phoneme sequence.
+    start_flat_index: usize,
+    /// Length of the n-gram (number of phonemes).
+    length: usize,
+    /// Feature vectors of phonemes in this n-gram.
+    features: Vec<ndarray::Array1<f32>>,
+    /// IPA symbols for debugging/export.
+    symbols: Vec<String>,
+    /// Word IDs that this n-gram spans (for cross-word rhymes).
+    word_ids: Vec<String>,
+}
+
+/// Find all n-gram rhyme matches across the full flattened phoneme sequence.
+/// 
+/// Algorithm:
+/// 1. Generate all n-grams (length 3-15) from flat phoneme stream
+/// 2. Compare all pairs via DTW
+/// 3. Map back to source words and compute weighted scores
+/// 4. Return sorted by weighted_score (similarity × sqrt(length))
+fn find_ngram_rhyme_matches(
+    flat_tokens: &[tokenizer::PhoneticToken],
+    flat_context: &[FlatPhonemeContext],
+    _all_words: &[&stream::IpaStreamWord],
+) -> Vec<RhymePair> {
+
+    // ── Step 1: Generate all n-grams from flat phoneme sequence ──────────
+    let mut ngrams: Vec<PhonemeNGram> = Vec::new();
+    
+    for length in MIN_NGRAM_LENGTH..=MAX_NGRAM_LENGTH {
+        for start in 0..flat_tokens.len().saturating_sub(length - 1) {
+            let end = start + length;
+            
+            let features: Vec<ndarray::Array1<f32>> = flat_tokens[start..end]
+                .iter()
+                .filter(|t| t.t_type == tokenizer::TokenType::Phoneme)
+                .map(|t| t.features.clone())
+                .collect();
+            
+            if features.len() != length {
+                continue; // Skip if contains boundary tokens
+            }
+            
+            let symbols: Vec<String> = flat_context[start..end]
+                .iter()
+                .map(|ctx| ctx.symbol.clone())
+                .collect();
+            
+            let mut word_ids_set = std::collections::HashSet::new();
+            for ctx in &flat_context[start..end] {
+                word_ids_set.insert(ctx.word_id.clone());
+            }
+            let word_ids: Vec<String> = word_ids_set.into_iter().collect();
+            
+            ngrams.push(PhonemeNGram {
+                start_flat_index: start,
+                length,
+                features,
+                symbols,
+                word_ids,
+            });
+        }
+    }
+
+    // ── Step 2: Compare all n-gram pairs via DTW ─────────────────────────
+    let mut matches: Vec<RhymePair> = Vec::new();
+    
+    for i in 0..ngrams.len() {
+        for j in (i + 1)..ngrams.len() {
+            let ng_a = &ngrams[i];
+            let ng_b = &ngrams[j];
+            
+            // Skip if same length but too different positions (optimization)
+            if ng_a.length == ng_b.length && ng_a.start_flat_index.abs_diff(ng_b.start_flat_index) < ng_a.length {
+                continue; // Overlapping or adjacent — not a rhyme
+            }
+            
+            // Skip if no shared words (ensure cross-word or inter-word matches)
+            let same_word = ng_a.word_ids.iter().any(|id| ng_b.word_ids.contains(id));
+            if same_word && ng_a.word_ids.len() == 1 && ng_b.word_ids.len() == 1 {
+                continue; // Both within same single word — not interesting
+            }
+            
+            // Compute DTW similarity
+            let features_a: Vec<ndarray::ArrayView1<f32>> = ng_a.features.iter().map(|f| f.view()).collect();
+            let features_b: Vec<ndarray::ArrayView1<f32>> = ng_b.features.iter().map(|f| f.view()).collect();
+            
+            let distance = algorithms::dtw::dtw_distance(&features_a, &features_b);
+            let similarity = algorithms::dtw::dtw_similarity(distance);
+            
+            if similarity < RHYME_THRESHOLD {
+                continue;
+            }
+            
+            // Compute weighted score: similarity × sqrt(avg_length)
+            let avg_length = (ng_a.length + ng_b.length) as f32 / 2.0;
+            let weighted_score = similarity * avg_length.sqrt();
+            
+            // Determine strength tier
+            let strength_tier = if weighted_score >= 2.5 {
+                "strong"
+            } else if weighted_score >= 1.5 {
+                "medium"
+            } else {
+                "weak"
+            }.to_string();
+            
+            // Map to primary word IDs (use first word if spans multiple)
+            let word_id_a = ng_a.word_ids.first().cloned().unwrap_or_default();
+            let word_id_b = ng_b.word_ids.first().cloned().unwrap_or_default();
+            
+            matches.push(RhymePair {
+                word_id_a,
+                word_id_b,
+                similarity,
+                match_length: ((ng_a.length + ng_b.length) / 2),
+                position_a: ng_a.start_flat_index,
+                position_b: ng_b.start_flat_index,
+                sequence_a: ng_a.symbols.clone(),
+                sequence_b: ng_b.symbols.clone(),
+                weighted_score,
+                strength_tier,
+            });
+        }
+    }
+    
+    // ── Step 3: Sort by weighted score (strongest first) ─────────────────
+    matches.sort_by(|a, b| b.weighted_score.partial_cmp(&a.weighted_score).unwrap_or(std::cmp::Ordering::Equal));
+    
+    matches
+}
+
+#[derive(Debug)]
+struct FlatPhonemeContext {
+    source: PhonemeRef,
+    symbol: String,
+    line_index: usize,
+    word_index: usize,
+    word_id: String,
+    language: String,
+    original_word: String,
+    syllable_ipa: String,
+    syllable_grapheme: String,
+    is_stressed_syllable: bool,
+}
 const ANALYZER_NAME: &str = "phonetic-poetry-engine";
 const ANALYZER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RESPONSE_SCHEMA_NAME: &str = "StreamAnalysisResult";
@@ -584,56 +836,97 @@ pub fn analyze_stream(
     let all_words: Vec<&stream::IpaStreamWord> = ipa_stream.words().collect();
     let lines = ipa_stream.lines();
 
-    // ── Rhyme detection over ALL words ────────────────────────────────────
-    // Build coda token sequences for every word (stressed syllable → end).
-    // Comparing all words pairwise catches end-rhymes, internal rhymes,
-    // anaphoric rhymes, and cross-line rhymes uniformly.
-    let coda_seqs: Vec<Vec<tokenizer::PhoneticToken>> = all_words
-        .iter()
-        .map(|w| coda_tokens_from_word(w, registry))
-        .collect();
+    // ── Flatten all phoneme tokens from all words (needed for n-gram rhyme) ──
+    let mut flat_tokens: Vec<tokenizer::PhoneticToken> = Vec::new();
+    let mut flat_token_lines: Vec<usize> = Vec::new();
+    let mut flat_context: Vec<FlatPhonemeContext> = Vec::new();
 
-    // ── Pairwise rhyme scoring ────────────────────────────────────────────
-    let n = all_words.len();
-    let mut pairs: Vec<(usize, usize, f32)> = Vec::new();
+    for word in &all_words {
+        let word_tokens = tokens_from_word(word, registry);
+        flat_token_lines.extend(std::iter::repeat(word.line_index).take(word_tokens.len()));
+        flat_tokens.extend(word_tokens);
 
-    for i in 0..n {
-        for j in (i + 1)..n {
-            let dist  = rhyme_distance(&coda_seqs[i], &coda_seqs[j]);
-            let score = dtw_similarity(dist);
-            if score >= RHYME_THRESHOLD {
-                pairs.push((i, j, score));
+        for (syl_idx, syllable) in word.syllables.iter().enumerate() {
+            let is_stressed_syllable = word.stressed_syllable >= 0
+                && syl_idx == word.stressed_syllable as usize;
+            for (phoneme_idx, symbol) in syllable.tokens.iter().enumerate() {
+                flat_context.push(FlatPhonemeContext {
+                    source: PhonemeRef {
+                        word_id: word.id.clone(),
+                        syllable_index: syl_idx,
+                        phoneme_index: phoneme_idx,
+                        flat_index: flat_context.len(),
+                    },
+                    symbol: symbol.clone(),
+                    line_index: word.line_index,
+                    word_index: word.word_index,
+                    word_id: word.id.clone(),
+                    language: word.language.clone(),
+                    original_word: word.original.clone(),
+                    syllable_ipa: syllable.ipa.clone(),
+                    syllable_grapheme: syllable.grapheme.clone(),
+                    is_stressed_syllable,
+                });
             }
         }
     }
 
-    // Sort best scores first for greedy group assignment
-    pairs.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    debug_assert_eq!(flat_context.len(), flat_tokens.len());
 
-    // ── Greedy rhyme group assignment (A, B, C, …) ───────────────────────
+    // ── N-gram rhyme detection over full flattened phoneme sequence ──────
+    // Find similar phoneme subsequences (length 3-15) using sliding window
+    // across the entire text, ignoring word boundaries. This catches:
+    // - Cross-word rhymes (кар-то-ма зо-на → "тома-зо")
+    // - Internal rhymes (ор-ка ↔ он-ка)
+    // - Anagrammatic rhymes (пужд ↔ ждуб)
+    // - Variable-length rhymes (кар-то ↔ кр-то)
+    let rhyme_pairs_output = find_ngram_rhyme_matches(&flat_tokens, &flat_context, &all_words);
+
+    // ── Greedy rhyme group assignment from n-gram pairs ──────────────────
+    let n = all_words.len();
     let mut group_of: Vec<Option<String>> = vec![None; n];
     let mut group_counter: u8 = b'A';
+    let mut best_score: Vec<f32> = vec![0.0; n];
 
-    for &(i, j, _) in &pairs {
-        match (group_of[i].clone(), group_of[j].clone()) {
-            (None, None) => {
-                let letter = (group_counter as char).to_string();
-                group_counter = group_counter.saturating_add(1);
-                group_of[i] = Some(letter.clone());
-                group_of[j] = Some(letter);
+    // Build index: word_id → word_index
+    let word_id_to_idx: std::collections::HashMap<&str, usize> = all_words
+        .iter()
+        .enumerate()
+        .map(|(idx, w)| (w.id.as_str(), idx))
+        .collect();
+
+    for pair in &rhyme_pairs_output {
+        let i = word_id_to_idx.get(pair.word_id_a.as_str()).copied();
+        let j = word_id_to_idx.get(pair.word_id_b.as_str()).copied();
+
+        if let (Some(i), Some(j)) = (i, j) {
+            // Update best scores
+            if pair.similarity > best_score[i] {
+                best_score[i] = pair.similarity;
             }
-            (Some(g), None) => { group_of[j] = Some(g); }
-            (None, Some(g)) => { group_of[i] = Some(g); }
-            (Some(_), Some(_)) => {} // both already in a group
+            if pair.similarity > best_score[j] {
+                best_score[j] = pair.similarity;
+            }
+
+            // Greedy group assignment
+            match (group_of[i].clone(), group_of[j].clone()) {
+                (None, None) => {
+                    let letter = (group_counter as char).to_string();
+                    group_counter = group_counter.saturating_add(1);
+                    group_of[i] = Some(letter.clone());
+                    group_of[j] = Some(letter);
+                }
+                (Some(g), None) => {
+                    group_of[j] = Some(g);
+                }
+                (None, Some(g)) => {
+                    group_of[i] = Some(g);
+                }
+                (Some(_), Some(_)) => {} // Both already grouped
+            }
         }
     }
 
-    // Best score per word
-    let mut best_score: Vec<f32> = vec![0.0; n];
-    for &(i, j, score) in &pairs {
-        if score > best_score[i] { best_score[i] = score; }
-        if score > best_score[j] { best_score[j] = score; }
-    }
 
     // ── Build annotation map for ALL words ───────────────────────────────
     let mut annotations: HashMap<String, WordAnnotation> = HashMap::new();
@@ -672,59 +965,7 @@ pub fn analyze_stream(
     let echo = compute_echo(&all_words, registry, &EchoParams::default());
 
     // ── Density / cluster detection over full token stream ────────────────
-    // Flatten all phoneme tokens from all words in stream order.
-    // In parallel we keep stable per-phoneme references and context to build
-    // a frontend-friendly per-phoneme payload sorted by `flatIndex`.
-    #[derive(Debug)]
-    struct FlatPhonemeContext {
-        source: PhonemeRef,
-        symbol: String,
-        line_index: usize,
-        word_index: usize,
-        word_id: String,
-        language: String,
-        original_word: String,
-        syllable_ipa: String,
-        syllable_grapheme: String,
-        is_stressed_syllable: bool,
-    }
-
-    let mut flat_tokens: Vec<tokenizer::PhoneticToken> = Vec::new();
-    let mut flat_token_lines: Vec<usize> = Vec::new();
-    let mut flat_context: Vec<FlatPhonemeContext> = Vec::new();
-
-    for word in &all_words {
-        let word_tokens = tokens_from_word(word, registry);
-        flat_token_lines.extend(std::iter::repeat(word.line_index).take(word_tokens.len()));
-        flat_tokens.extend(word_tokens);
-
-        for (syl_idx, syllable) in word.syllables.iter().enumerate() {
-            let is_stressed_syllable = word.stressed_syllable >= 0
-                && syl_idx == word.stressed_syllable as usize;
-            for (phoneme_idx, symbol) in syllable.tokens.iter().enumerate() {
-                flat_context.push(FlatPhonemeContext {
-                    source: PhonemeRef {
-                        word_id: word.id.clone(),
-                        syllable_index: syl_idx,
-                        phoneme_index: phoneme_idx,
-                        flat_index: flat_context.len(),
-                    },
-                    symbol: symbol.clone(),
-                    line_index: word.line_index,
-                    word_index: word.word_index,
-                    word_id: word.id.clone(),
-                    language: word.language.clone(),
-                    original_word: word.original.clone(),
-                    syllable_ipa: syllable.ipa.clone(),
-                    syllable_grapheme: syllable.grapheme.clone(),
-                    is_stressed_syllable,
-                });
-            }
-        }
-    }
-
-    debug_assert_eq!(flat_context.len(), flat_tokens.len());
-
+    // Use already-flattened phoneme tokens for cluster detection.
     const WINDOW: usize = 10;
     let windows = sliding_window(&flat_tokens, WINDOW);
     let mut clusters: Vec<Cluster> = Vec::new();
@@ -1246,6 +1487,7 @@ pub fn analyze_stream(
             file: RESPONSE_SCHEMA_FILE,
         },
         annotations,
+        rhyme_pairs: rhyme_pairs_output,
         clusters,
         rhythm,
         echo,
@@ -1253,6 +1495,7 @@ pub fn analyze_stream(
         phonemes,
         molstar,
         structurality,
+        metric_glossary: metric_glossary(),
     })
 }
 
@@ -1519,30 +1762,47 @@ mod stream_integration_tests {
     // ── Internal (mid-line) rhyme is detected ─────────────────────────────
 
     #[test]
-    fn test_internal_rhyme_detected_across_lines() {
-        // Line 0: mid_a(pa) end_a(su)
-        // Line 1: mid_b(pa) end_b(du)
-        // mid_a and mid_b should share a rhyme group (identical coda "pa"),
-        // even though they are not line-final words.
-        let mid_a = make_word("mid_a", 0, 0, 0, &[("pa", &["p", "a"], true)]);
-        let end_a = make_word("end_a", 0, 1, 0, &[("su", &["s", "u"], true)]);
+    fn test_ngram_rhyme_detection() {
+        // Test: N-gram sliding window detects similar phoneme subsequences.
+        // 
+        // Line 0: word_a(pa-ta-su) [6 phonemes]
+        // Line 1: word_b(ka-su)    [4 phonemes]
+        //
+        // Expected: "asu" subsequence in word_a matches "asu" in word_b (after ka).
+        //           Both words get rhyme groups based on n-gram similarity.
+        let word_a = make_word("word_a", 0, 0, 0, &[("pa", &["p", "a"], false), ("ta", &["t", "a"], true), ("su", &["s", "u"], false)]);
         let lb    = r#"{"type":"line_break","lineIndex":0}"#.to_string();
-        let mid_b = make_word("mid_b", 1, 0, 0, &[("pa", &["p", "a"], true)]);
-        let end_b = make_word("end_b", 1, 1, 0, &[("du", &["d", "u"], true)]);
+        let word_b = make_word("word_b", 1, 0, 0, &[("ka", &["k", "a"], true), ("su", &["s", "u"], false)]);
         let lb2   = r#"{"type":"line_break","lineIndex":1}"#.to_string();
-        let json  = wrap_stream(&[mid_a, end_a, lb, mid_b, end_b, lb2]);
+        let json  = wrap_stream(&[word_a, lb, word_b, lb2]);
         let stream = parse(&json);
         let reg = reg();
         let result = analyze_stream(&stream, &reg).unwrap();
 
-        let g_mid_a = &result.annotations["mid_a"].rhyme_group;
-        let g_mid_b = &result.annotations["mid_b"].rhyme_group;
-        assert!(g_mid_a.is_some(), "mid_a should have a rhyme group");
-        assert_eq!(g_mid_a, g_mid_b, "internal rhyming words should share a group");
+        // Both words should have rhyme groups (n-gram match found)
+        let g_a = &result.annotations["word_a"].rhyme_group;
+        let g_b = &result.annotations["word_b"].rhyme_group;
+        assert!(g_a.is_some(), "word_a should have a rhyme group");
+        assert!(g_b.is_some(), "word_b should have a rhyme group");
+        assert_eq!(g_a, g_b, "words with matching n-grams should share a group");
 
-        // end words differ phonologically — they should not share mid's group
-        let g_end_a = &result.annotations["end_a"].rhyme_group;
-        assert_ne!(g_end_a, g_mid_a, "non-rhyming end word should not share mid group");
+        // Check rhyme_pairs contains at least one pair
+        let pair_exists = result.rhyme_pairs.iter().any(|p| 
+            (p.word_id_a == "word_a" && p.word_id_b == "word_b") ||
+            (p.word_id_a == "word_b" && p.word_id_a == "word_a")
+        );
+        assert!(pair_exists, "rhyme_pairs should contain word_a-word_b match");
+
+        // Verify match length is at least 2 (substring match)
+        let max_length = result.rhyme_pairs.iter()
+            .filter(|p| 
+                (p.word_id_a == "word_a" && p.word_id_b == "word_b") ||
+                (p.word_id_a == "word_b" && p.word_id_b == "word_a")
+            )
+            .map(|p| p.match_length)
+            .max()
+            .unwrap_or(0);
+        assert!(max_length >= 2, "n-gram match should be at least 2 phonemes (got {})", max_length);
     }
 
     // ── WordAnnotation carries position fields ────────────────────────────

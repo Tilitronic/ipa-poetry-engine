@@ -33,32 +33,31 @@ fn main() {
         }
     }
 
-    let Some(phonemes_path) = phonemes_path else {
-        eprintln!("Missing required argument: --phonemes <path>");
-        print_help();
-        process::exit(2);
-    };
-
     let Some(stream_path) = stream_path else {
         eprintln!("Missing required argument: --stream <path>");
         print_help();
         process::exit(2);
     };
 
-    if let Err(err) = run(&phonemes_path, &stream_path, pretty) {
+    if let Err(err) = run(phonemes_path.as_deref(), &stream_path, pretty) {
         eprintln!("Error: {err}");
         process::exit(1);
     }
 }
 
-fn run(phonemes_path: &str, stream_path: &str, pretty: bool) -> Result<(), String> {
-    let phonemes_bytes = fs::read(phonemes_path)
-        .map_err(|e| format!("failed to read phonemes file '{phonemes_path}': {e}"))?;
+fn run(phonemes_path: Option<&str>, stream_path: &str, pretty: bool) -> Result<(), String> {
     let stream_bytes = fs::read(stream_path)
         .map_err(|e| format!("failed to read stream file '{stream_path}': {e}"))?;
 
-    let registry = FeatureRegistry::from_json_bytes(&phonemes_bytes)
-        .map_err(|e| format!("failed to parse phonemes registry: {e}"))?;
+    let registry = if let Some(path) = phonemes_path {
+        let phonemes_bytes = fs::read(path)
+            .map_err(|e| format!("failed to read phonemes file '{path}': {e}"))?;
+        FeatureRegistry::from_json_bytes(&phonemes_bytes)
+            .map_err(|e| format!("failed to parse phonemes registry: {e}"))?
+    } else {
+        FeatureRegistry::build()
+    };
+
     let stream = IpaStream::from_json_bytes(&stream_bytes)
         .map_err(|e| format!("failed to parse stream json: {e}"))?;
 
@@ -79,9 +78,9 @@ fn run(phonemes_path: &str, stream_path: &str, pretty: bool) -> Result<(), Strin
 
 fn print_help() {
     eprintln!(
-        "Usage: analyze_stream_cli --phonemes <path> --stream <path> [--pretty]\n\n\
---phonemes  Path to phonemes.json\n\
+        "Usage: analyze_stream_cli --stream <path> [--phonemes <path>] [--pretty]\n\n\
 --stream    Path to IPA Stream v1.1 JSON file\n\
+--phonemes  Optional path to phonemes.json (defaults to embedded registry)\n\
 --pretty    Pretty-print JSON output\n"
     );
 }

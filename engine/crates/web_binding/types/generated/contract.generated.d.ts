@@ -131,6 +131,10 @@ export interface StreamAnalysisResult {
    */
   echo: EchoAnnotation[];
   /**
+   * Short metric glossary for fast frontend interpretation and UX hints.
+   */
+  metricGlossary: MetricGlossaryEntry[];
+  /**
    * IPA analysis transcribed as amino-acid-like chain for Mol* rendering.
    */
   molstar: MolstarTranscription;
@@ -146,6 +150,10 @@ export interface StreamAnalysisResult {
    * Response schema descriptor for contract-aware consumers.
    */
   responseSchema: ResponseSchemaInfo;
+  /**
+   * All detected rhyme pairs with similarity scores (flexible grouping).
+   */
+  rhyme_pairs: RhymePair[];
   /**
    * Per-line rhythm analysis (stress pattern, clausula, confidence).
    */
@@ -244,6 +252,13 @@ export interface PhonemeRef {
    * Stable token ID of the containing word.
    */
   wordId: string;
+  [k: string]: any | undefined;
+}
+export interface MetricGlossaryEntry {
+  description: string;
+  id: string;
+  interpretation: string;
+  source: string;
   [k: string]: any | undefined;
 }
 export interface MolstarTranscription {
@@ -418,6 +433,52 @@ export interface ResponseSchemaInfo {
   file: string;
   name: string;
   version: string;
+  [k: string]: any | undefined;
+}
+/**
+ * Detected rhyme match between two words with position and strength metadata.
+ */
+export interface RhymePair {
+  /**
+   * Length of the best matching phoneme subsequence.
+   */
+  matchLength: number;
+  /**
+   * Start position (phoneme index) of match in word A.
+   */
+  positionA: number;
+  /**
+   * Start position (phoneme index) of match in word B.
+   */
+  positionB: number;
+  /**
+   * IPA symbol sequence of the matched region in word A.
+   */
+  sequenceA: string[];
+  /**
+   * IPA symbol sequence of the matched region in word B.
+   */
+  sequenceB: string[];
+  /**
+   * DTW phonetic similarity score [0, 1], higher = stronger rhyme.
+   */
+  similarity: number;
+  /**
+   * Strength tier for quick filtering: "strong" | "medium" | "weak".
+   */
+  strengthTier: string;
+  /**
+   * Weighted score: similarity × sqrt(match_length).
+   */
+  weightedScore: number;
+  /**
+   * ID of the first word in the pair.
+   */
+  wordIdA: string;
+  /**
+   * ID of the second word in the pair.
+   */
+  wordIdB: string;
   [k: string]: any | undefined;
 }
 /**

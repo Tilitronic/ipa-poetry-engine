@@ -8,10 +8,12 @@
     "annotations",
     "clusters",
     "echo",
+    "metricGlossary",
     "molstar",
     "pauses",
     "phonemes",
     "responseSchema",
+    "rhyme_pairs",
     "rhythm",
     "structurality",
     "version"
@@ -46,6 +48,13 @@
         "$ref": "#/definitions/EchoAnnotation"
       }
     },
+    "metricGlossary": {
+      "description": "Short metric glossary for fast frontend interpretation and UX hints.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/MetricGlossaryEntry"
+      }
+    },
     "molstar": {
       "description": "IPA analysis transcribed as amino-acid-like chain for Mol* rendering.",
       "allOf": [
@@ -76,6 +85,13 @@
           "$ref": "#/definitions/ResponseSchemaInfo"
         }
       ]
+    },
+    "rhyme_pairs": {
+      "description": "All detected rhyme pairs with similarity scores (flexible grouping).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RhymePair"
+      }
     },
     "rhythm": {
       "description": "Per-line rhythm analysis (stress pattern, clausula, confidence).",
@@ -294,6 +310,29 @@
           "items": {
             "$ref": "#/definitions/SyllableAnnotation"
           }
+        }
+      }
+    },
+    "MetricGlossaryEntry": {
+      "type": "object",
+      "required": [
+        "description",
+        "id",
+        "interpretation",
+        "source"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "interpretation": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
         }
       }
     },
@@ -1012,6 +1051,78 @@
           "type": "string"
         },
         "version": {
+          "type": "string"
+        }
+      }
+    },
+    "RhymePair": {
+      "description": "Detected rhyme match between two words with position and strength metadata.",
+      "type": "object",
+      "required": [
+        "matchLength",
+        "positionA",
+        "positionB",
+        "sequenceA",
+        "sequenceB",
+        "similarity",
+        "strengthTier",
+        "weightedScore",
+        "wordIdA",
+        "wordIdB"
+      ],
+      "properties": {
+        "matchLength": {
+          "description": "Length of the best matching phoneme subsequence.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "positionA": {
+          "description": "Start position (phoneme index) of match in word A.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "positionB": {
+          "description": "Start position (phoneme index) of match in word B.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "sequenceA": {
+          "description": "IPA symbol sequence of the matched region in word A.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sequenceB": {
+          "description": "IPA symbol sequence of the matched region in word B.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "similarity": {
+          "description": "DTW phonetic similarity score [0, 1], higher = stronger rhyme.",
+          "type": "number",
+          "format": "float"
+        },
+        "strengthTier": {
+          "description": "Strength tier for quick filtering: \"strong\" | \"medium\" | \"weak\".",
+          "type": "string"
+        },
+        "weightedScore": {
+          "description": "Weighted score: similarity × sqrt(match_length).",
+          "type": "number",
+          "format": "float"
+        },
+        "wordIdA": {
+          "description": "ID of the first word in the pair.",
+          "type": "string"
+        },
+        "wordIdB": {
+          "description": "ID of the second word in the pair.",
           "type": "string"
         }
       }

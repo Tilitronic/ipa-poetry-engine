@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/corpus_baselines/__init__.py
+src/corpus_baselines/cli.py
+src/corpus_baselines/config.py
+src/corpus_baselines/metrics.py
+src/corpus_baselines/progress.py
+src/corpus_baselines.egg-info/PKG-INFO
+src/corpus_baselines.egg-info/SOURCES.txt
+src/corpus_baselines.egg-info/dependency_links.txt
+src/corpus_baselines.egg-info/entry_points.txt
+src/corpus_baselines.egg-info/requires.txt
+src/corpus_baselines.egg-info/top_level.txt
+tests/test_config.py
+tests/test_metrics.py
+tests/test_progress.py
