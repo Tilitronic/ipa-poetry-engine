@@ -96,7 +96,6 @@ export interface IpaStreamSyllable {
   [k: string]: any | undefined;
 }
 
-export type MolstarContactKind = "similarity_weak" | "rhyme_strong" | "pause_pattern";
 /**
  * How the line ends relative to its last stressed syllable.
  */
@@ -134,10 +133,6 @@ export interface StreamAnalysisResult {
    * Short metric glossary for fast frontend interpretation and UX hints.
    */
   metricGlossary: MetricGlossaryEntry[];
-  /**
-   * IPA analysis transcribed as amino-acid-like chain for Mol* rendering.
-   */
-  molstar: MolstarTranscription;
   /**
    * Prosodic pauses created by punctuation and/or line breaks.
    */
@@ -263,76 +258,6 @@ export interface MetricGlossaryEntry {
   id: string;
   interpretation: string;
   source: string;
-  [k: string]: any | undefined;
-}
-export interface MolstarTranscription {
-  biophysicalModel: MolstarBiophysicalModel;
-  chainId: string;
-  contacts: MolstarContact[];
-  fasta: string;
-  formatVersion: string;
-  interpretation: string[];
-  ipaLines: string[];
-  originalLines: string[];
-  pdb: string;
-  residueMap: MolstarResidueMapItem[];
-  secondaryStructure: MolstarSecondaryElement[];
-  sequence: string;
-  wordSpans: MolstarWordSpan[];
-  [k: string]: any | undefined;
-}
-export interface MolstarBiophysicalModel {
-  backboneStep: number;
-  contactEnergyUnit: string;
-  distanceUnit: string;
-  equations: string[];
-  modelName: string;
-  pausePatternMinRepeat: number;
-  similarityContactCutoff: number;
-  [k: string]: any | undefined;
-}
-export interface MolstarContact {
-  decayLength: number;
-  energy: number;
-  equilibriumDistance: number;
-  fromResidueIndex: number;
-  kind: MolstarContactKind;
-  note: string;
-  springConstant: number;
-  strength: number;
-  toResidueIndex: number;
-  [k: string]: any | undefined;
-}
-export interface MolstarResidueMapItem {
-  aminoAcid: string;
-  aminoAcidName: string;
-  language: string;
-  lineIndex: number;
-  originalWord: string;
-  residueIndex: number;
-  source: PhonemeRef;
-  syllableGrapheme: string;
-  syllableIpa: string;
-  symbol: string;
-  wordIndex: number;
-  [k: string]: any | undefined;
-}
-export interface MolstarSecondaryElement {
-  endResidueIndex: number;
-  kind: string;
-  note: string;
-  startResidueIndex: number;
-  [k: string]: any | undefined;
-}
-export interface MolstarWordSpan {
-  ipaWord: string;
-  language: string;
-  lineIndex: number;
-  originalWord: string;
-  residueEnd: number;
-  residueStart: number;
-  wordId: string;
-  wordIndex: number;
   [k: string]: any | undefined;
 }
 /**

@@ -401,90 +401,6 @@ export interface PhonemeLayer {
   entries: PhonemeRecord[];
 }
 
-// ── Mol* transcription payload ───────────────────────────────────────────
-
-/** Contact semantics for Mol* pseudo-structure links. */
-export type MolstarContactKind =
-  | "similarity_weak"
-  | "rhyme_strong"
-  | "pause_pattern";
-
-/** Secondary-structure segment in the generated pseudo-chain. */
-export interface MolstarSecondaryElement {
-  kind: "helix" | "sheet" | "coil" | string;
-  startResidueIndex: number;
-  endResidueIndex: number;
-  note: string;
-}
-
-/** One cross-residue relation used to emulate tertiary interactions. */
-export interface MolstarContact {
-  kind: MolstarContactKind;
-  fromResidueIndex: number;
-  toResidueIndex: number;
-  strength: number;
-  equilibriumDistance: number;
-  decayLength: number;
-  springConstant: number;
-  energy: number;
-  note: string;
-}
-
-/** Mapping between residue positions and original IPA phonemes. */
-export interface MolstarResidueMapItem {
-  residueIndex: number;
-  aminoAcid: string;
-  aminoAcidName: string;
-  source: PhonemeRef;
-  symbol: string;
-  lineIndex: number;
-  wordIndex: number;
-  language: string;
-  originalWord: string;
-  syllableIpa: string;
-  syllableGrapheme: string;
-}
-
-/** Contiguous residue span for one original word token. */
-export interface MolstarWordSpan {
-  wordId: string;
-  lineIndex: number;
-  wordIndex: number;
-  language: string;
-  originalWord: string;
-  ipaWord: string;
-  residueStart: number;
-  residueEnd: number;
-}
-
-/** Biophysical proxy model settings used for contact/geometry synthesis. */
-export interface MolstarBiophysicalModel {
-  modelName: string;
-  backboneStep: number;
-  contactEnergyUnit: string;
-  distanceUnit: string;
-  similarityContactCutoff: number;
-  pausePatternMinRepeat: number;
-  equations: string[];
-}
-
-/** Mol*-ready pseudo-protein transcription of the IPA analysis. */
-export interface MolstarTranscription {
-  formatVersion: string;
-  chainId: string;
-  sequence: string;
-  fasta: string;
-  pdb: string;
-  secondaryStructure: MolstarSecondaryElement[];
-  contacts: MolstarContact[];
-  residueMap: MolstarResidueMapItem[];
-  wordSpans: MolstarWordSpan[];
-  ipaLines: string[];
-  originalLines: string[];
-  biophysicalModel: MolstarBiophysicalModel;
-  interpretation: string[];
-}
-
 // ── Prosodic pauses ───────────────────────────────────────────────────────
 
 /**
@@ -647,8 +563,6 @@ export interface StreamAnalysisResult {
   pauses: PauseAnnotation[];
   /** Full per-phoneme payload: vectors, intrinsic traits, computed metrics. */
   phonemes: PhonemeLayer;
-  /** Mol*-ready pseudo-protein transcription for immediate rendering. */
-  molstar: MolstarTranscription;
   /** Multi-plane structural complexity report. */
   structurality: StructuralityAnalysis;
   /** Short metric glossary for UI hints and quick interpretation. */

@@ -14,7 +14,7 @@ pub use matrix::PhoneticStream;
 pub use registry::FeatureRegistry;
 pub use stream::{IpaStream, FORMAT_VERSION};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use crate::registry::{FEATURE_DESCRIPTIONS, FEATURE_NAMES};
@@ -350,95 +350,7 @@ pub struct PhonemeRecord {
     pub computed_metrics: PhonemeComputedMetrics,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum MolstarContactKind {
-    SimilarityWeak,
-    RhymeStrong,
-    PausePattern,
-}
 
-#[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MolstarSecondaryElement {
-    pub kind: &'static str,
-    pub start_residue_index: usize,
-    pub end_residue_index: usize,
-    pub note: &'static str,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MolstarContact {
-    pub kind: MolstarContactKind,
-    pub from_residue_index: usize,
-    pub to_residue_index: usize,
-    pub strength: f32,
-    pub equilibrium_distance: f32,
-    pub decay_length: f32,
-    pub spring_constant: f32,
-    pub energy: f32,
-    pub note: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MolstarResidueMapItem {
-    pub residue_index: usize,
-    pub amino_acid: char,
-    pub amino_acid_name: &'static str,
-    pub source: PhonemeRef,
-    pub symbol: String,
-    pub line_index: usize,
-    pub word_index: usize,
-    pub language: String,
-    pub original_word: String,
-    pub syllable_ipa: String,
-    pub syllable_grapheme: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MolstarWordSpan {
-    pub word_id: String,
-    pub line_index: usize,
-    pub word_index: usize,
-    pub language: String,
-    pub original_word: String,
-    pub ipa_word: String,
-    pub residue_start: usize,
-    pub residue_end: usize,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MolstarBiophysicalModel {
-    pub model_name: &'static str,
-    pub backbone_step: f32,
-    pub contact_energy_unit: &'static str,
-    pub distance_unit: &'static str,
-    pub similarity_contact_cutoff: f32,
-    pub pause_pattern_min_repeat: usize,
-    pub equations: Vec<String>,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MolstarTranscription {
-    pub format_version: &'static str,
-    pub chain_id: char,
-    pub sequence: String,
-    pub fasta: String,
-    pub pdb: String,
-    pub secondary_structure: Vec<MolstarSecondaryElement>,
-    pub contacts: Vec<MolstarContact>,
-    pub residue_map: Vec<MolstarResidueMapItem>,
-    pub word_spans: Vec<MolstarWordSpan>,
-    pub ipa_lines: Vec<String>,
-    pub original_lines: Vec<String>,
-    pub biophysical_model: MolstarBiophysicalModel,
-    pub interpretation: Vec<String>,
-}
 
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -510,8 +422,6 @@ pub struct StreamAnalysisResult {
     pub pauses: Vec<PauseAnnotation>,
     /// Fully expanded per-phoneme payload sorted by flat index.
     pub phonemes: PhonemeLayer,
-    /// IPA analysis transcribed as amino-acid-like chain for Mol* rendering.
-    pub molstar: MolstarTranscription,
     /// Cross-plane structural complexity report normalised to [0, 1].
     pub structurality: StructuralityAnalysis,
     /// Short metric glossary for fast frontend interpretation and UX hints.
@@ -904,10 +814,6 @@ struct FlatPhonemeContext {
     line_index: usize,
     word_index: usize,
     word_id: String,
-    language: String,
-    original_word: String,
-    syllable_ipa: String,
-    syllable_grapheme: String,
     is_stressed_syllable: bool,
 }
 const ANALYZER_NAME: &str = "phonetic-poetry-engine";
@@ -949,51 +855,7 @@ fn class_hint(features: &[f32]) -> &'static str {
     }
 }
 
-fn amino_acid_for_vector(features: &[f32]) -> (char, &'static str) {
-    const AA: [(char, &str); 20] = [
-        ('A', "ALA"), ('R', "ARG"), ('N', "ASN"), ('D', "ASP"), ('C', "CYS"),
-        ('Q', "GLN"), ('E', "GLU"), ('G', "GLY"), ('H', "HIS"), ('I', "ILE"),
-        ('L', "LEU"), ('K', "LYS"), ('M', "MET"), ('F', "PHE"), ('P', "PRO"),
-        ('S', "SER"), ('T', "THR"), ('W', "TRP"), ('Y', "TYR"), ('V', "VAL"),
-    ];
 
-    let score = features
-        .iter()
-        .enumerate()
-        .fold(0i32, |acc, (i, &v)| acc + ((v * 100.0) as i32) * ((i as i32 % 7) + 1));
-    let idx = score.rem_euclid(AA.len() as i32) as usize;
-    AA[idx]
-}
-
-fn build_pdb_atom_line(
-    atom_serial: usize,
-    residue_name: &str,
-    chain_id: char,
-    residue_seq: usize,
-    x: f32,
-    y: f32,
-    z: f32,
-) -> String {
-    format!(
-        "ATOM  {atom_serial:>5}  CA  {residue_name:>3} {chain_id}{residue_seq:>4}    {x:>8.3}{y:>8.3}{z:>8.3}  1.00 20.00           C\n"
-    )
-}
-
-fn stddev(values: &[f32]) -> f32 {
-    if values.len() <= 1 {
-        return 0.0;
-    }
-    let mean = values.iter().sum::<f32>() / values.len() as f32;
-    let var = values
-        .iter()
-        .map(|v| {
-            let d = v - mean;
-            d * d
-        })
-        .sum::<f32>()
-        / values.len() as f32;
-    var.sqrt()
-}
 
 // ────────────────────────────────────────────────────────────────────────────
 // analyze_stream — IPA Stream v1.1 entry point
@@ -1056,10 +918,6 @@ pub fn analyze_stream(
                     line_index: word.line_index,
                     word_index: word.word_index,
                     word_id: word.id.clone(),
-                    language: word.language.clone(),
-                    original_word: word.original.clone(),
-                    syllable_ipa: syllable.ipa.clone(),
-                    syllable_grapheme: syllable.grapheme.clone(),
                     is_stressed_syllable,
                 });
             }
@@ -1269,355 +1127,6 @@ pub fn analyze_stream(
 
     let pauses = collect_pauses(ipa_stream);
 
-    let mut deviation_by_syllable: HashMap<(String, usize), DeviationType> = HashMap::new();
-    for line in &rhythm {
-        for syl in &line.syllables {
-            deviation_by_syllable.insert(
-                (
-                    syl.syllable_ref.word_id.clone(),
-                    syl.syllable_ref.syllable_index,
-                ),
-                syl.deviation.clone(),
-            );
-        }
-    }
-
-    let mut sequence = String::with_capacity(flat_tokens.len());
-    let mut residue_map: Vec<MolstarResidueMapItem> = Vec::with_capacity(flat_tokens.len());
-    let mut pdb_lines: Vec<String> = Vec::with_capacity(flat_tokens.len() + 16);
-    let mut sec_codes: Vec<char> = Vec::with_capacity(flat_tokens.len());
-    let mut word_spans_map: HashMap<String, MolstarWordSpan> = HashMap::new();
-
-    for (idx, token) in flat_tokens.iter().enumerate() {
-        let residue_index = idx + 1;
-        let context = &flat_context[idx];
-        let vector = token.features.to_vec();
-        let (aa, aa_name) = amino_acid_for_vector(&vector);
-        sequence.push(aa);
-
-        residue_map.push(MolstarResidueMapItem {
-            residue_index,
-            amino_acid: aa,
-            amino_acid_name: aa_name,
-            source: context.source.clone(),
-            symbol: context.symbol.clone(),
-            line_index: context.line_index,
-            word_index: context.word_index,
-            language: context.language.clone(),
-            original_word: context.original_word.clone(),
-            syllable_ipa: context.syllable_ipa.clone(),
-            syllable_grapheme: context.syllable_grapheme.clone(),
-        });
-
-        let span_entry = word_spans_map
-            .entry(context.word_id.clone())
-            .or_insert_with(|| MolstarWordSpan {
-                word_id: context.word_id.clone(),
-                line_index: context.line_index,
-                word_index: context.word_index,
-                language: context.language.clone(),
-                original_word: context.original_word.clone(),
-                ipa_word: String::new(),
-                residue_start: residue_index,
-                residue_end: residue_index,
-            });
-        span_entry.residue_end = residue_index;
-        span_entry.ipa_word.push_str(&context.symbol);
-
-        let deviation = deviation_by_syllable
-            .get(&(context.word_id.clone(), context.source.syllable_index));
-        let sec_code = if context.is_stressed_syllable {
-            'H'
-        } else if matches!(deviation, Some(DeviationType::Spondee | DeviationType::Pyrrhic)) {
-            'E'
-        } else {
-            'C'
-        };
-        sec_codes.push(sec_code);
-
-        let t = idx as f32;
-        let (x, y, z) = match sec_code {
-            'H' => (
-                1.6 * (t * 0.72).cos(),
-                1.6 * (t * 0.72).sin(),
-                t * 1.5,
-            ),
-            'E' => (
-                t * 1.2,
-                if idx % 2 == 0 { 1.3 } else { -1.3 },
-                t * 0.3,
-            ),
-            _ => (t * 1.35, 0.0, 0.0),
-        };
-
-        pdb_lines.push(build_pdb_atom_line(
-            residue_index,
-            aa_name,
-            'A',
-            residue_index,
-            x,
-            y,
-            z,
-        ));
-    }
-
-    let mut secondary_structure: Vec<MolstarSecondaryElement> = Vec::new();
-    if !sec_codes.is_empty() {
-        let mut run_start = 0usize;
-        for idx in 1..=sec_codes.len() {
-            if idx == sec_codes.len() || sec_codes[idx] != sec_codes[run_start] {
-                let code = sec_codes[run_start];
-                let (kind, note) = match code {
-                    'H' => ("helix", "rhythmic stress scaffolding"),
-                    'E' => ("sheet", "rhythmic deviation zig-zag"),
-                    _ => ("coil", "neutral flow segment"),
-                };
-                secondary_structure.push(MolstarSecondaryElement {
-                    kind,
-                    start_residue_index: run_start + 1,
-                    end_residue_index: idx,
-                    note,
-                });
-                run_start = idx;
-            }
-        }
-    }
-
-    let mut word_last_residue: HashMap<String, usize> = HashMap::new();
-    for (word_id, span) in &word_spans_map {
-        word_last_residue.insert(word_id.clone(), span.residue_end);
-    }
-
-    let mut word_spans: Vec<MolstarWordSpan> = word_spans_map.into_values().collect();
-    word_spans.sort_by(|a, b| {
-        a.line_index
-            .cmp(&b.line_index)
-            .then(a.word_index.cmp(&b.word_index))
-    });
-
-    let mut ipa_lines_map: HashMap<usize, Vec<String>> = HashMap::new();
-    let mut original_lines_map: HashMap<usize, Vec<String>> = HashMap::new();
-    for span in &word_spans {
-        ipa_lines_map
-            .entry(span.line_index)
-            .or_default()
-            .push(span.ipa_word.clone());
-        original_lines_map
-            .entry(span.line_index)
-            .or_default()
-            .push(span.original_word.clone());
-    }
-    let max_line_idx = ipa_lines_map
-        .keys()
-        .chain(original_lines_map.keys())
-        .copied()
-        .max()
-        .unwrap_or(0);
-    let ipa_lines: Vec<String> = if ipa_lines_map.is_empty() && original_lines_map.is_empty() {
-        Vec::new()
-    } else {
-        (0..=max_line_idx)
-            .map(|idx| ipa_lines_map.get(&idx).map(|v| v.join(" ")).unwrap_or_default())
-            .collect()
-    };
-    let original_lines: Vec<String> = if ipa_lines_map.is_empty() && original_lines_map.is_empty() {
-        Vec::new()
-    } else {
-        (0..=max_line_idx)
-            .map(|idx| original_lines_map.get(&idx).map(|v| v.join(" ")).unwrap_or_default())
-            .collect()
-    };
-
-    let residue_line_index: HashMap<usize, usize> = word_spans
-        .iter()
-        .map(|span| (span.residue_end, span.line_index))
-        .collect();
-
-    let mut contact_dedupe: HashSet<(usize, usize, &'static str)> = HashSet::new();
-    let mut contacts: Vec<MolstarContact> = Vec::new();
-
-    for ann in &echo {
-        let from_idx = ann.source.flat_index + 1;
-        if let Some(nearest) = ann.nearest_match {
-            if ann.gap <= 6.0 {
-                let to_idx = nearest + 1;
-                let (a, b) = if from_idx < to_idx { (from_idx, to_idx) } else { (to_idx, from_idx) };
-                if contact_dedupe.insert((a, b, "similarity")) {
-                    let strength = (ann.opacity * (1.0 - ann.gap / 8.0)).clamp(0.05, 0.45);
-                    let equilibrium_distance = 3.6 + ann.gap * 0.35;
-                    let decay_length = 2.0 + ann.gap * 0.4;
-                    let spring_constant = (0.5 + 2.5 * strength).clamp(0.5, 2.0);
-                    let energy = -(strength * 0.6);
-                    contacts.push(MolstarContact {
-                        kind: MolstarContactKind::SimilarityWeak,
-                        from_residue_index: a,
-                        to_residue_index: b,
-                        strength,
-                        equilibrium_distance,
-                        decay_length,
-                        spring_constant,
-                        energy,
-                        note: "short-range phoneme similarity".to_string(),
-                    });
-                }
-            }
-        }
-    }
-
-    let mut rhyme_groups: HashMap<String, Vec<(usize, f32)>> = HashMap::new();
-    for (word_id, ann) in &annotations {
-        if let Some(group) = &ann.rhyme_group {
-            if let Some(&res_idx) = word_last_residue.get(word_id) {
-                rhyme_groups
-                    .entry(group.clone())
-                    .or_default()
-                    .push((res_idx, ann.rhyme_score.unwrap_or(0.7)));
-            }
-        }
-    }
-
-    for (group, members) in &rhyme_groups {
-        for i in 0..members.len() {
-            for j in (i + 1)..members.len() {
-                let (a, sa) = members[i];
-                let (b, sb) = members[j];
-                let (from_idx, to_idx) = if a < b { (a, b) } else { (b, a) };
-                if contact_dedupe.insert((from_idx, to_idx, "rhyme")) {
-                    let strength = (0.65 + 0.35 * ((sa + sb) * 0.5)).clamp(0.65, 1.0);
-                    let line_a = residue_line_index.get(&a).copied().unwrap_or(0) as i32;
-                    let line_b = residue_line_index.get(&b).copied().unwrap_or(0) as i32;
-                    let line_distance = (line_a - line_b).abs() as f32;
-                    let equilibrium_distance = 7.0 + line_distance * 0.8;
-                    let decay_length = 10.0;
-                    let spring_constant = (4.0 + 4.0 * strength).clamp(4.0, 8.0);
-                    let energy = -(1.2 * strength);
-                    contacts.push(MolstarContact {
-                        kind: MolstarContactKind::RhymeStrong,
-                        from_residue_index: from_idx,
-                        to_residue_index: to_idx,
-                        strength,
-                        equilibrium_distance,
-                        decay_length,
-                        spring_constant,
-                        energy,
-                        note: format!("rhyme-group {group}"),
-                    });
-                }
-            }
-        }
-    }
-
-    let mut pause_pattern_groups: HashMap<String, Vec<(usize, f32)>> = HashMap::new();
-    for pause in &pauses {
-        if let Some(&res_idx) = word_last_residue.get(&pause.after_word_id) {
-            let key = match (&pause.punctuation, pause.has_line_break) {
-                (Some(p), true) => format!("{p}+lb"),
-                (Some(p), false) => p.clone(),
-                (None, true) => "line_break".to_string(),
-                (None, false) => continue,
-            };
-            pause_pattern_groups
-                .entry(key)
-                .or_default()
-                .push((res_idx, pause.strength));
-        }
-    }
-
-    for (pattern, mut members) in pause_pattern_groups {
-        if members.len() < 3 {
-            continue;
-        }
-        members.sort_by_key(|(idx, _)| *idx);
-        let spacings: Vec<f32> = members
-            .windows(2)
-            .map(|w| w[1].0.saturating_sub(w[0].0) as f32)
-            .collect();
-        let spacing_std = stddev(&spacings);
-        let regularity = (1.0 / (1.0 + spacing_std)).clamp(0.0, 1.0);
-        if regularity < 0.35 {
-            continue;
-        }
-        for pair in members.windows(2) {
-            let (a_idx, a_strength) = pair[0];
-            let (b_idx, b_strength) = pair[1];
-            if b_idx.saturating_sub(a_idx) > 12 {
-                continue;
-            }
-            let (from_idx, to_idx) = if a_idx < b_idx { (a_idx, b_idx) } else { (b_idx, a_idx) };
-            if contact_dedupe.insert((from_idx, to_idx, "pause")) {
-                let strength = (0.08 + 0.25 * ((a_strength + b_strength) * 0.5) * regularity)
-                    .clamp(0.08, 0.35);
-                let equilibrium_distance = 4.5 + (to_idx.saturating_sub(from_idx) as f32) * 0.25;
-                let decay_length = 3.5;
-                let spring_constant = (0.4 + 1.2 * strength).clamp(0.4, 1.0);
-                let energy = -(0.25 * strength);
-                contacts.push(MolstarContact {
-                    kind: MolstarContactKind::PausePattern,
-                    from_residue_index: from_idx,
-                    to_residue_index: to_idx,
-                    strength,
-                    equilibrium_distance,
-                    decay_length,
-                    spring_constant,
-                    energy,
-                    note: format!("pause-pattern {pattern} (regularity={regularity:.2})"),
-                });
-            }
-        }
-    }
-
-    contacts.sort_by(|a, b| {
-        a.from_residue_index
-            .cmp(&b.from_residue_index)
-            .then(a.to_residue_index.cmp(&b.to_residue_index))
-    });
-
-    let fasta = format!(">IPA_PHONEME_CHAIN_A\n{sequence}\n");
-
-    let mut pdb = String::new();
-    pdb.push_str("HEADER    IPA PHONEME TO MOLSTAR TRANSCRIPTION\n");
-    pdb.push_str("TITLE     PHONETIC ANALYSIS AS PSEUDO PROTEIN CHAIN\n");
-    for line in &pdb_lines {
-        pdb.push_str(line);
-    }
-    pdb.push_str("TER\nEND\n");
-
-    let molstar = MolstarTranscription {
-        format_version: "1.0",
-        chain_id: 'A',
-        sequence,
-        fasta,
-        pdb,
-        secondary_structure,
-        contacts,
-        residue_map,
-        word_spans,
-        ipa_lines,
-        original_lines,
-        biophysical_model: MolstarBiophysicalModel {
-            model_name: "ipa_biophysical_proxy_v2",
-            backbone_step: 3.8,
-            contact_energy_unit: "a.u.",
-            distance_unit: "angstrom",
-            similarity_contact_cutoff: 6.0,
-            pause_pattern_min_repeat: 3,
-            equations: vec![
-                "E_similarity = -0.6 * S".to_string(),
-                "E_rhyme = -1.2 * S".to_string(),
-                "E_pause = -0.25 * S".to_string(),
-                "S_similarity = opacity * max(0, 1 - gap/8)".to_string(),
-                "S_rhyme = clamp(0.65 + 0.35 * mean(rhymeScorePair), 0.65, 1.0)".to_string(),
-                "S_pause = clamp(0.08 + 0.25 * mean(pauseStrengthPair) * regularity, 0.08, 0.35)".to_string(),
-            ],
-        },
-        interpretation: vec![
-            "rhythm: mapped to secondary structure bands (helix/sheet/coil)".to_string(),
-            "echo similarity: weak short-range contacts from nearest similar phonemes".to_string(),
-            "rhyme: strong tertiary contacts between rhyme-group terminal residues".to_string(),
-            "pause patterns: weak local contacts when punctuation/line-break patterns repeat".to_string(),
-        ],
-    };
-
     let structurality = compute_structurality(
         &all_words,
         &annotations,
@@ -1648,7 +1157,6 @@ pub fn analyze_stream(
         echo,
         pauses,
         phonemes,
-        molstar,
         structurality,
         metric_glossary: metric_glossary(),
     })
@@ -2173,21 +1681,9 @@ mod stream_integration_tests {
             assert_eq!(item.features.len(), registry::FEATURE_NAMES.len());
         }
 
-        assert_eq!(result.molstar.chain_id, 'A');
-        assert_eq!(result.molstar.sequence.len(), result.phonemes.entries.len());
-        assert!(result.molstar.pdb.contains("ATOM"));
-        assert!(!result.molstar.residue_map.is_empty());
-        assert_eq!(result.molstar.word_spans.len(), 2);
-        assert_eq!(result.molstar.original_lines, vec![" ".to_string()]);
-        assert!(!result.molstar.ipa_lines.is_empty());
-        assert_eq!(result.molstar.word_spans[0].word_id, "t1");
-        assert_eq!(result.molstar.word_spans[0].ipa_word, "pa");
-
-        let first = &result.molstar.residue_map[0];
-        assert_eq!(first.original_word, "");
-        assert_eq!(first.symbol, "p");
+        let first = &result.phonemes.entries[0];
         assert_eq!(first.source.word_id, "t1");
-        assert!(result.molstar.biophysical_model.model_name.contains("ipa_biophysical_proxy"));
+        assert_eq!(first.symbol, "p");
     }
 }
 
