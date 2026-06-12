@@ -26,8 +26,8 @@ if (Test-Path $pkg) {
     Remove-Item $pkg -Recurse -Force
 }
 
-Write-Host "==> wasm-pack build" -ForegroundColor Cyan
-wasm-pack build $crate --target web --out-dir pkg
+Write-Host "==> wasm-pack build (bundler target)" -ForegroundColor Cyan
+wasm-pack build $crate --target bundler --out-dir pkg
 if ($LASTEXITCODE -ne 0) { throw "wasm-pack failed" }
 
 Write-Host "==> Patching pkg/package.json" -ForegroundColor Cyan
@@ -57,6 +57,7 @@ $json = [ordered]@{
     }
     files       = @(
         "ipa_poetry_engine_bg.wasm"
+        "ipa_poetry_engine_bg.js"
         "ipa_poetry_engine.js"
         "ipa_poetry_engine.d.ts"
         "ipa_poetry_engine_bg.wasm.d.ts"

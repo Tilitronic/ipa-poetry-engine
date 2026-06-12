@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::registry::{FEATURE_DESCRIPTIONS, FEATURE_NAMES};
 
 use algorithms::density::{find_clusters, sliding_window, IDX_DELREL, IDX_NAS, IDX_STRID, IDX_SYL, IDX_LAT};
+use algorithms::distance::cosine_similarity;
 use algorithms::dtw::{dtw_similarity, rhyme_distance};
 use algorithms::echo::{compute_echo, EchoParams, DEFAULT_ALPHA_MIN};
 use algorithms::pause::collect_pauses;
@@ -659,121 +660,102 @@ fn compute_rhyme_grouping(
 // Rhyme grouping threshold
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Minimum DTW similarity score to consider two words as rhyming.
-/// Lowered to 0.4 to enable flexible frontend grouping (e.g., "дон-зон" ~60%).
+/// Minimum average cosine similarity for a phoneme alignment to be kept
+/// as a rhyme candidate.
 const RHYME_THRESHOLD: f32 = 0.40;
 
-/// Minimum phoneme count in n-gram subsequence to qualify as rhyme candidate.
-const MIN_NGRAM_LENGTH: usize = 2;
+/// Minimum phoneme count in an alignment to qualify as rhyme candidate.
+const MIN_ALIGNMENT_LENGTH: usize = 2;
 
-/// Maximum phoneme count in n-gram subsequence (performance limit).
-const MAX_NGRAM_LENGTH: usize = 15;
+
 
 // ────────────────────────────────────────────────────────────────────────────
-// N-gram rhyme matching — find similar phoneme subsequences across full text
+// Self-self Smith-Waterman local alignment — find similar phoneme subsequences
+// across the full flattened phoneme sequence, ignoring word boundaries.
 // ────────────────────────────────────────────────────────────────────────────
 
-/// N-gram phoneme subsequence with position metadata.
-#[derive(Debug, Clone)]
-struct PhonemeNGram {
-    /// Start position in flat phoneme sequence.
-    start_flat_index: usize,
-    /// Length of the n-gram (number of phonemes).
-    length: usize,
-    /// Feature vectors of phonemes in this n-gram.
-    features: Vec<ndarray::Array1<f32>>,
-    /// IPA symbols for debugging/export.
-    symbols: Vec<String>,
-    /// Word IDs that this n-gram spans (for cross-word rhymes).
-    word_ids: Vec<String>,
-}
-
-/// Find all n-gram rhyme matches across the full flattened phoneme sequence.
-/// 
+/// Find all similar phoneme subsequence pairs across the full flattened
+/// phoneme sequence using Smith-Waterman local alignment applied to a
+/// single sequence against itself.
+///
 /// Algorithm:
-/// 1. Generate all n-grams (length 3-15) from flat phoneme stream
-/// 2. Compare all pairs via DTW
-/// 3. Map back to source words and compute weighted scores
-/// 4. Return sorted by weighted_score (similarity × sqrt(length))
+/// 1. Compute an N×N DP matrix where cell (i,j) stores the best local
+///    alignment score ending at positions i, j (i < j, skip diagonal).
+///    Score per position = 2·cosine_similarity(feats[i], feats[j]) - 1,
+///    giving positive contribution when cos_sim > 0.5.
+/// 2. Extract alignments at their end points (where the next diagonal
+///    cell resets to zero or sequence boundary is reached).
+/// 3. Trace back to find the start, compute average similarity from the
+///    cumulative DP score, and emit a RhymePair per alignment.
+/// 4. Sort by weighted_score = avg_similarity × √length.
+///
+/// Complexity: O(N²) in phoneme tokens (vs O(M²) in n-grams previously).
+///
+/// Bounds: worst-case output is N×(N-1)/2 RhymePairs, one per possible
+/// alignment end. In practice, the cos_sim > 0.5 filter keeps this to
+/// a few thousand for typical poems.
 fn find_ngram_rhyme_matches(
     flat_tokens: &[tokenizer::PhoneticToken],
     flat_context: &[FlatPhonemeContext],
     _all_words: &[&stream::IpaStreamWord],
 ) -> Vec<RhymePair> {
+    let n = flat_tokens.len();
+    if n < MIN_ALIGNMENT_LENGTH {
+        return Vec::new();
+    }
 
-    // ── Step 1: Generate all n-grams from flat phoneme sequence ──────────
-    let mut ngrams: Vec<PhonemeNGram> = Vec::new();
-    
-    for length in MIN_NGRAM_LENGTH..=MAX_NGRAM_LENGTH {
-        for start in 0..flat_tokens.len().saturating_sub(length - 1) {
-            let end = start + length;
-            
-            let features: Vec<ndarray::Array1<f32>> = flat_tokens[start..end]
-                .iter()
-                .filter(|t| t.t_type == tokenizer::TokenType::Phoneme)
-                .map(|t| t.features.clone())
-                .collect();
-            
-            if features.len() != length {
-                continue; // Skip if contains boundary tokens
-            }
-            
-            let symbols: Vec<String> = flat_context[start..end]
-                .iter()
-                .map(|ctx| ctx.symbol.clone())
-                .collect();
-            
-            let mut word_ids_set = std::collections::HashSet::new();
-            for ctx in &flat_context[start..end] {
-                word_ids_set.insert(ctx.word_id.clone());
-            }
-            let word_ids: Vec<String> = word_ids_set.into_iter().collect();
-            
-            ngrams.push(PhonemeNGram {
-                start_flat_index: start,
-                length,
-                features,
-                symbols,
-                word_ids,
-            });
+    // ── Step 1: Compute Smith-Waterman DP matrix ───────────────────────
+    // dp[i][j] = cumulative score of the best local alignment ending at
+    // positions i, j in the flat token sequence.
+    // Only upper triangle (i < j) is filled — the diagonal is skipped.
+    let mut dp = vec![vec![0.0f32; n]; n];
+
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let cos_sim = cosine_similarity(
+                flat_tokens[i].features.view(),
+                flat_tokens[j].features.view(),
+            );
+            let score = 2.0 * cos_sim - 1.0;
+
+            let prev = if i > 0 && j > 0 { dp[i - 1][j - 1] } else { 0.0 };
+            dp[i][j] = 0.0f32.max(prev + score);
         }
     }
 
-    // ── Step 2: Compare all n-gram pairs via DTW ─────────────────────────
+    // ── Step 2: Extract alignments at their end points ─────────────────
     let mut matches: Vec<RhymePair> = Vec::new();
-    
-    for i in 0..ngrams.len() {
-        for j in (i + 1)..ngrams.len() {
-            let ng_a = &ngrams[i];
-            let ng_b = &ngrams[j];
-            
-            // Skip if same length but too different positions (optimization)
-            if ng_a.length == ng_b.length && ng_a.start_flat_index.abs_diff(ng_b.start_flat_index) < ng_a.length {
-                continue; // Overlapping or adjacent — not a rhyme
+
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let val = dp[i][j];
+            if val <= 0.0 { continue; }
+
+            // An alignment ends when the next diagonal cell resets to zero
+            // (or we're at the sequence boundary).
+            let at_end = i + 1 >= n || j + 1 >= n || dp[i + 1][j + 1] == 0.0;
+            if !at_end { continue; }
+
+            // Trace back to find the start of this alignment
+            let (mut si, mut sj) = (i, j);
+            let mut len = 1usize;
+
+            while si > 0 && sj > 0 && dp[si - 1][sj - 1] > 0.0 {
+                si -= 1;
+                sj -= 1;
+                len += 1;
             }
-            
-            // Skip if no shared words (ensure cross-word or inter-word matches)
-            let same_word = ng_a.word_ids.iter().any(|id| ng_b.word_ids.contains(id));
-            if same_word && ng_a.word_ids.len() == 1 && ng_b.word_ids.len() == 1 {
-                continue; // Both within same single word — not interesting
-            }
-            
-            // Compute DTW similarity
-            let features_a: Vec<ndarray::ArrayView1<f32>> = ng_a.features.iter().map(|f| f.view()).collect();
-            let features_b: Vec<ndarray::ArrayView1<f32>> = ng_b.features.iter().map(|f| f.view()).collect();
-            
-            let distance = algorithms::dtw::dtw_distance(&features_a, &features_b);
-            let similarity = algorithms::dtw::dtw_similarity(distance);
-            
-            if similarity < RHYME_THRESHOLD {
-                continue;
-            }
-            
-            // Compute weighted score: similarity × sqrt(avg_length)
-            let avg_length = (ng_a.length + ng_b.length) as f32 / 2.0;
-            let weighted_score = similarity * avg_length.sqrt();
-            
-            // Determine strength tier
+
+            if len < MIN_ALIGNMENT_LENGTH { continue; }
+
+            // Average similarity derived from cumulative DP score:
+            //   dp[i][j] = Σ(2·cos - 1) = 2·Σ(cos) - len
+            //   ⇒ avg_sim = Σ(cos) / len = (dp + len) / (2·len)
+            let avg_sim = 0.5 + val / (2.0 * len as f32);
+            if avg_sim < RHYME_THRESHOLD { continue; }
+
+            let weighted_score = avg_sim * (len as f32).sqrt();
+
             let strength_tier = if weighted_score >= 2.5 {
                 "strong"
             } else if weighted_score >= 1.5 {
@@ -781,29 +763,25 @@ fn find_ngram_rhyme_matches(
             } else {
                 "weak"
             }.to_string();
-            
-            // Map to primary word IDs (use first word if spans multiple)
-            let word_id_a = ng_a.word_ids.first().cloned().unwrap_or_default();
-            let word_id_b = ng_b.word_ids.first().cloned().unwrap_or_default();
-            
+
             matches.push(RhymePair {
-                word_id_a,
-                word_id_b,
-                similarity,
-                match_length: ((ng_a.length + ng_b.length) / 2),
-                position_a: ng_a.start_flat_index,
-                position_b: ng_b.start_flat_index,
-                sequence_a: ng_a.symbols.clone(),
-                sequence_b: ng_b.symbols.clone(),
+                word_id_a: flat_context[si].word_id.clone(),
+                word_id_b: flat_context[sj].word_id.clone(),
+                similarity: avg_sim,
+                match_length: len,
+                position_a: si,
+                position_b: sj,
+                sequence_a: flat_context[si..=i].iter().map(|c| c.symbol.clone()).collect(),
+                sequence_b: flat_context[sj..=j].iter().map(|c| c.symbol.clone()).collect(),
                 weighted_score,
                 strength_tier,
             });
         }
     }
-    
-    // ── Step 3: Sort by weighted score (strongest first) ─────────────────
+
+    // ── Step 3: Sort by weighted score descending ──────────────────────
     matches.sort_by(|a, b| b.weighted_score.partial_cmp(&a.weighted_score).unwrap_or(std::cmp::Ordering::Equal));
-    
+
     matches
 }
 
@@ -926,9 +904,9 @@ pub fn analyze_stream(
 
     debug_assert_eq!(flat_context.len(), flat_tokens.len());
 
-    // ── N-gram rhyme detection over full flattened phoneme sequence ──────
-    // Find similar phoneme subsequences (length 3-15) using sliding window
-    // across the entire text, ignoring word boundaries. This catches:
+    // ── Smith-Waterman local alignment over full phoneme sequence ────────
+    // Find all pairs of similar phoneme subsequences via self-self DP,
+    // ignoring word boundaries. This catches:
     // - Cross-word rhymes (кар-то-ма зо-на → "тома-зо")
     // - Internal rhymes (ор-ка ↔ он-ка)
     // - Anagrammatic rhymes (пужд ↔ ждуб)
@@ -1260,6 +1238,8 @@ mod integration_tests {
             assert!(reg.get("ʃ").is_some());
         }
     }
+
+
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1684,6 +1664,50 @@ mod stream_integration_tests {
         let first = &result.phonemes.entries[0];
         assert_eq!(first.source.word_id, "t1");
         assert_eq!(first.symbol, "p");
+    }
+
+    // ── Stress test: moderate poem with ~30 words ──────────────────────
+    // Reproduces the WASM-unreachable crash from O(n²) n-gram pair comparisons.
+    // Kept small to complete in debug mode.
+
+    #[test]
+    fn test_moderate_poem_does_not_crash_with_ngrams() {
+        let reg = reg();
+
+        // Build a 30-word / 10-line stream JSON.
+        let mut items: Vec<String> = Vec::new();
+        let mut word_id = 0usize;
+        for line_idx in 0..10 {
+            let word_count = (line_idx % 3) + 2; // 2..4 words per line
+            for w in 0..word_count {
+                let syl_count = (w % 2) + 1; // 1..2 syllables per word
+                let mut syllables = Vec::new();
+                for s in 0..syl_count {
+                    let phoneme = if s == 0 { "k" } else { "a" };
+                    syllables.push(format!(
+                        r#"{{"ipa":"{phoneme}","tokens":["{phoneme}"],"grapheme":"","stressed":false,"isOpen":true}}"#,
+                    ));
+                }
+                let syll_list = syllables.join(",");
+                items.push(format!(
+                    r#"{{"type":"word","id":"w{word_id}","lineIndex":{line_idx},"wordIndex":{w},"language":"uk","original":"","syllableCount":{syl_count},"stressedSyllable":0,"stressSource":"dict","syllables":[{syll_list}]}}"#
+                ));
+                word_id += 1;
+            }
+            items.push(format!(r#"{{"type":"line_break","lineIndex":{line_idx}}}"#));
+        }
+
+        let total_words = word_id;
+        let json = format!(
+            r#"{{"metadata":{{"version":"1.1","generatedAt":"2026-01-01T00:00:00.000Z","confirmedLineCount":10,"totalWordCount":{total_words},"languagesPresent":["uk"]}},"stream":[{}]}}"#,
+            items.join(",")
+        );
+
+        let stream = IpaStream::from_json_bytes(json.as_bytes()).unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = analyze_stream(&stream, &reg);
+        }));
+        assert!(result.is_ok(), "moderate poem with n-gram rhyme detection should not panic (OOM / unreachable)");
     }
 }
 

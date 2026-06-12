@@ -1,6 +1,6 @@
 [package]
 name        = "core"
-version     = "0.2.0"
+version     = "0.2.3"
 edition     = "2021"
 description = "Phonetic poetry analysis engine — core library"
 license     = "AGPL-3.0-or-later"
